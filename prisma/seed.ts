@@ -28,7 +28,6 @@ async function main() {
       status: "online",
       profile: {
         create: {
-          id: "00000000-0000-0000-0000-000000000000",
           fullName: "NightStalker",
           email: "demo@example.com",
           avatarUrl: "https://ui-avatars.com/api/?name=Night+Stalker&background=7289DA&color=fff",

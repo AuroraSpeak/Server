@@ -38,53 +38,41 @@ export default function WebRTCStatus() {
     }
   }, [peerConnections])
 
-  if (connectionStatus === "disconnected") {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">
-              <WifiOff size={12} className="mr-1" />
-              <span>Disconnected</span>
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Not connected to any voice channel</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
+  const statusClasses = {
+    connected: "bg-green-500/10 text-green-500 border-green-500/20",
+    connecting: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
+    disconnected: "bg-red-500/10 text-red-500 border-red-500/20",
   }
 
-  if (connectionStatus === "connecting") {
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">
-              <AlertCircle size={12} className="mr-1" />
-              <span>Connecting...</span>
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Establishing WebRTC connections</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
+  const statusIcons = {
+    connected: <Wifi size={12} className="mr-1" />,
+    connecting: <AlertCircle size={12} className="mr-1" />,
+    disconnected: <WifiOff size={12} className="mr-1" />,
+  }
+
+  const statusText = {
+    connected: "Connected",
+    connecting: "Connecting...",
+    disconnected: "Disconnected",
+  }
+
+  const tooltipText = {
+    connected: "WebRTC connections established",
+    connecting: "Establishing WebRTC connections",
+    disconnected: "Not connected to any voice channel",
   }
 
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
-            <Wifi size={12} className="mr-1" />
-            <span>Connected</span>
+          <Badge variant="outline" className={`${statusClasses[connectionStatus]} flex items-center`}>
+            {statusIcons[connectionStatus]}
+            <span>{statusText[connectionStatus]}</span>
           </Badge>
         </TooltipTrigger>
         <TooltipContent>
-          <p>WebRTC connections established</p>
+          <p>{tooltipText[connectionStatus]}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

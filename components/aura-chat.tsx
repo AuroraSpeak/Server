@@ -17,6 +17,8 @@ import {
   Inbox,
   Volume2,
   Phone,
+  Search,
+  ArrowRight,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -25,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { useAppContext } from "@/contexts/app-context"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Card } from "@/components/ui/card"
 
 interface AuraChatProps {
   activeChannel: string
@@ -100,34 +103,34 @@ export default function AuraChat({
   return (
     <div className="aura-chat flex flex-col h-full">
       {/* Channel header */}
-      <div className="h-12 border-b border-aura-bg flex items-center px-4">
+      <div className="h-14 border-b border-[hsla(var(--aura-primary),0.1)] flex items-center px-4">
         <div className="flex items-center">
           {!isVoiceChannel ? (
-            <Hash size={24} className="mr-2 text-aura-text-muted" />
+            <Hash size={20} className="mr-2 text-[hsl(var(--aura-text-muted))]" />
           ) : (
-            <div className="w-6 h-6 rounded-full bg-aura-muted flex items-center justify-center mr-2">
-              <Volume2 size={14} className="text-aura-text-muted" />
+            <div className="w-6 h-6 rounded-full bg-[hsl(var(--aura-muted))] flex items-center justify-center mr-2">
+              <Volume2 size={14} className="text-[hsl(var(--aura-text-muted))]" />
             </div>
           )}
-          <h2 className="font-bold">{channelName}</h2>
+          <h2 className="font-medium">{channelName}</h2>
         </div>
 
-        <div className="ml-auto flex items-center space-x-4">
+        <div className="ml-auto flex items-center space-x-3">
           {!isVoiceChannel && (
             <>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-                <Bell size={20} />
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--aura-interactive))]">
+                <Bell size={18} />
               </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-                <Pin size={20} />
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--aura-interactive))]">
+                <Pin size={18} />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-6 w-6 text-aura-interactive"
+                className="h-8 w-8 text-[hsl(var(--aura-interactive))]"
                 onClick={toggleMembersSidebar}
               >
-                <Users size={20} />
+                <Users size={18} />
               </Button>
               <TooltipProvider>
                 <Tooltip>
@@ -135,7 +138,7 @@ export default function AuraChat({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-green-400 border-green-400/30 hover:bg-green-400/10"
+                      className="text-[hsl(var(--aura-success))] border-[hsla(var(--aura-success),0.3)] hover:bg-[hsla(var(--aura-success),0.1)]"
                       onClick={handleJoinVoiceChannel}
                     >
                       <Phone size={14} className="mr-1" />
@@ -150,48 +153,69 @@ export default function AuraChat({
             </>
           )}
           <div className="relative">
-            <Input placeholder="Search" className="h-6 w-36 bg-aura-bg text-sm py-1 px-2" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--aura-text-muted))]" />
+            <Input
+              placeholder="Search"
+              className="h-8 w-36 pl-8 bg-[hsl(var(--aura-channels))] border-[hsla(var(--aura-primary),0.1)] text-sm py-1"
+            />
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-            <Inbox size={20} />
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--aura-interactive))]">
+            <Inbox size={18} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-            <Help size={20} />
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--aura-interactive))]">
+            <Help size={18} />
           </Button>
         </div>
       </div>
 
       {/* Messages */}
       <ScrollArea className="flex-1 px-4 py-4 scrollable">
-        <div className="space-y-4">
-          {/* Welcome message */}
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-8">
-              {!isVoiceChannel ? (
-                <>
-                  <div className="w-16 h-16 rounded-full bg-aura-muted flex items-center justify-center mb-4">
-                    <Hash size={32} className="text-aura-interactive" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-2">Welcome to #{channelName}!</h3>
-                  <p className="text-aura-text-muted text-center max-w-md">
-                    This is the start of the #{channelName} channel. Send a message to start the conversation.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="w-16 h-16 rounded-full bg-aura-muted flex items-center justify-center mb-4">
-                    <Volume2 size={32} className="text-aura-interactive" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-2">Voice Channel: {channelName}</h3>
-                  <p className="text-aura-text-muted text-center max-w-md">
-                    Join this voice channel to chat with other members.
-                  </p>
-                </>
-              )}
-            </div>
-          )}
+        {/* Welcome message */}
+        {messages.length === 0 && (
+          <Card className="p-8 bg-[hsla(var(--aura-bg),0.5)] border-[hsla(var(--aura-primary),0.1)] flex flex-col items-center justify-center text-center">
+            {!isVoiceChannel ? (
+              <>
+                <div className="w-16 h-16 rounded-full bg-[hsla(var(--aura-primary),0.2)] flex items-center justify-center mb-4">
+                  <Hash size={32} className="text-[hsl(var(--aura-primary))]" />
+                </div>
+                <h3 className="text-2xl font-bold mb-2">Welcome to #{channelName}!</h3>
+                <p className="text-[hsl(var(--aura-text-muted))] max-w-md">
+                  This is the start of the #{channelName} channel. Send a message to start the conversation.
+                </p>
+                <Button
+                  className="mt-4 bg-[hsl(var(--aura-primary))] hover:bg-[hsla(var(--aura-primary),0.9)]"
+                  onClick={() => {
+                    const input = document.querySelector(
+                      'input[placeholder="Message #' + channelName + '"]',
+                    ) as HTMLInputElement
+                    if (input) input.focus()
+                  }}
+                >
+                  Start Chatting <ArrowRight size={16} className="ml-2" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 rounded-full bg-[hsla(var(--aura-primary),0.2)] flex items-center justify-center mb-4">
+                  <Volume2 size={32} className="text-[hsl(var(--aura-primary))]" />
+                </div>
+                <h3 className="text-2xl font-bold mb-2">Voice Channel: {channelName}</h3>
+                <p className="text-[hsl(var(--aura-text-muted))] max-w-md">
+                  Join this voice channel to chat with other members.
+                </p>
+                <Button
+                  className="mt-4 bg-[hsl(var(--aura-success))] hover:bg-[hsla(var(--aura-success),0.9)]"
+                  onClick={handleJoinVoiceChannel}
+                >
+                  Join Voice Channel <Phone size={16} className="ml-2" />
+                </Button>
+              </>
+            )}
+          </Card>
+        )}
 
-          {/* Message groups */}
+        {/* Message groups */}
+        <div className="space-y-6">
           {Object.values(groupedMessages).map((group, groupIndex) => (
             <div key={groupIndex} className="message-group">
               {group.map((message, messageIndex) => {
@@ -203,13 +227,19 @@ export default function AuraChat({
                 })
 
                 return (
-                  <div key={message.id} className={cn("flex message", isFirstInGroup ? "mt-4" : "mt-0.5")}>
+                  <div
+                    key={message.id}
+                    className={cn("flex message transition-colors rounded-md", isFirstInGroup ? "mt-4" : "mt-0.5")}
+                  >
                     {isFirstInGroup ? (
                       <div className="avatar-with-status mr-4">
                         <Avatar className="h-10 w-10 mt-0.5">
                           <AvatarImage src={user.avatarUrl || "/placeholder.svg?height=40&width=40"} />
-                          <AvatarFallback>{user.fullName?.charAt(0) || "U"}</AvatarFallback>
+                          <AvatarFallback className="bg-[hsla(var(--aura-primary),0.2)] text-white">
+                            {user.fullName?.charAt(0) || "U"}
+                          </AvatarFallback>
                         </Avatar>
+                        <div className="status-indicator status-online"></div>
                       </div>
                     ) : (
                       <div className="w-10 mr-4"></div>
@@ -217,8 +247,10 @@ export default function AuraChat({
                     <div className="flex-1 min-w-0">
                       {isFirstInGroup && (
                         <div className="flex items-center">
-                          <span className="font-medium hover:underline cursor-pointer">{user.fullName}</span>
-                          <span className="text-xs text-aura-text-muted ml-2">{timestamp}</span>
+                          <span className="font-medium hover:underline cursor-pointer text-[hsl(var(--aura-text-normal))]">
+                            {user.fullName}
+                          </span>
+                          <span className="text-xs text-[hsl(var(--aura-text-muted))] ml-2">{timestamp}</span>
                         </div>
                       )}
                       <div className="text-sm whitespace-pre-wrap">{message.content}</div>
@@ -232,18 +264,18 @@ export default function AuraChat({
                                 <img
                                   src={file.url || "/placeholder.svg"}
                                   alt={file.name}
-                                  className="rounded-md border border-aura-muted max-h-60 object-cover"
+                                  className="rounded-md border border-[hsla(var(--aura-primary),0.1)] max-h-60 object-cover"
                                 />
                               ) : (
-                                <div className="flex items-center p-2 bg-aura-muted rounded-md">
-                                  <div className="mr-2 text-aura-text-muted">
+                                <div className="flex items-center p-2 bg-[hsla(var(--aura-muted),0.5)] rounded-md">
+                                  <div className="mr-2 text-[hsl(var(--aura-text-muted))]">
                                     <File size={16} />
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <p className="truncate font-medium text-sm">{file.name}</p>
-                                    <p className="text-xs text-aura-text-muted">{file.size}</p>
+                                    <p className="text-xs text-[hsl(var(--aura-text-muted))]">{file.size}</p>
                                   </div>
-                                  <Button variant="ghost" size="sm" className="text-aura-interactive">
+                                  <Button variant="ghost" size="sm" className="text-[hsl(var(--aura-interactive))]">
                                     Download
                                   </Button>
                                 </div>
@@ -259,7 +291,7 @@ export default function AuraChat({
                           {message.reactions.map((reaction: any, index: number) => (
                             <button
                               key={index}
-                              className="flex items-center bg-aura-muted hover:bg-aura-muted/80 px-2 py-1 rounded-full text-xs cursor-pointer transition-colors"
+                              className="flex items-center bg-[hsla(var(--aura-muted),0.5)] hover:bg-[hsla(var(--aura-muted),0.8)] px-2 py-1 rounded-full text-xs cursor-pointer transition-colors"
                             >
                               <span className="mr-1">{reaction.emoji}</span>
                               <span>{reaction.count}</span>
@@ -276,18 +308,18 @@ export default function AuraChat({
 
           {/* Typing indicator */}
           {isTyping && (
-            <div className="flex items-center text-sm text-aura-text-muted">
+            <div className="flex items-center text-sm text-[hsl(var(--aura-text-muted))]">
               <div className="flex space-x-1 mr-2">
                 <div
-                  className="w-2 h-2 rounded-full bg-aura-text-muted animate-bounce"
+                  className="w-2 h-2 rounded-full bg-[hsl(var(--aura-text-muted))] animate-bounce"
                   style={{ animationDelay: "0ms" }}
                 ></div>
                 <div
-                  className="w-2 h-2 rounded-full bg-aura-text-muted animate-bounce"
+                  className="w-2 h-2 rounded-full bg-[hsl(var(--aura-text-muted))] animate-bounce"
                   style={{ animationDelay: "150ms" }}
                 ></div>
                 <div
-                  className="w-2 h-2 rounded-full bg-aura-text-muted animate-bounce"
+                  className="w-2 h-2 rounded-full bg-[hsl(var(--aura-text-muted))] animate-bounce"
                   style={{ animationDelay: "300ms" }}
                 ></div>
               </div>
@@ -301,31 +333,53 @@ export default function AuraChat({
 
       {/* Message input */}
       {!isVoiceChannel && (
-        <div className="message-input-container">
-          <div className="relative rounded-lg bg-aura-muted">
-            <Button variant="ghost" size="icon" className="absolute left-2 top-2 text-aura-interactive">
-              <PlusCircle size={20} />
-            </Button>
-            <Input
-              placeholder={`Message #${channelName}`}
-              value={messageText}
-              onChange={(e) => setMessageText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="pl-10 pr-20 py-3 bg-transparent border-none focus-visible:ring-0 focus-visible:ring-offset-0 message-input"
-            />
-            <div className="absolute right-2 top-2 flex items-center space-x-1">
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-                <Gift size={20} />
+        <div className="p-4 border-t border-[hsla(var(--aura-primary),0.1)] bg-[hsla(var(--aura-bg),0.7)] backdrop-blur-sm">
+          <div className="message-input-container p-0">
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-[hsl(var(--aura-interactive))] hover:text-[hsl(var(--aura-interactive-hover))] hover:bg-transparent"
+              >
+                <PlusCircle size={20} />
               </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-                <Sticker size={20} />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-                <Smile size={20} />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-                <AtSign size={20} />
-              </Button>
+              <Input
+                placeholder={`Message #${channelName}`}
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="pl-10 pr-24 py-3 bg-[hsla(var(--aura-channels),0.8)] border-[hsla(var(--aura-primary),0.2)] focus-visible:ring-[hsla(var(--aura-primary),0.4)] focus-visible:border-[hsl(var(--aura-primary))]"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[hsl(var(--aura-interactive))] hover:text-[hsl(var(--aura-interactive-hover))] hover:bg-transparent"
+                >
+                  <Gift size={18} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[hsl(var(--aura-interactive))] hover:text-[hsl(var(--aura-interactive-hover))] hover:bg-transparent"
+                >
+                  <Sticker size={18} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[hsl(var(--aura-interactive))] hover:text-[hsl(var(--aura-interactive-hover))] hover:bg-transparent"
+                >
+                  <Smile size={18} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-[hsl(var(--aura-interactive))] hover:text-[hsl(var(--aura-interactive-hover))] hover:bg-transparent"
+                >
+                  <AtSign size={18} />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
