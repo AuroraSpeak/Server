@@ -26,6 +26,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Run Semgrep scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/react
+            p/nodejs
+
       - name: Read version from package.json
         id: get_version
         run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
@@ -79,16 +87,14 @@ jobs:
       - name: Generate changelog
         run: npx conventional-changelog -p angular -i CHANGELOG.md -s
         env:
-          HUSKY: 0  # Prevent husky from blocking CI if present
+          HUSKY: 0
 
       - name: Bump version, tag, and push
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          # Bump patch version
           pnpm version patch --no-git-tag-version
-
           VERSION=$(jq -r .version package.json)
 
           git add package.json pnpm-lock.yaml CHANGELOG.md
