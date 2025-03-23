@@ -1,4 +1,8 @@
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/AuroraSpeak/Server?utm_source=oss&utm_medium=github&utm_campaign=AuroraSpeak%2FServer&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+[![Build & Release](https://github.com/AuroraSpeak/Server/actions/workflows/release.yml/badge.svg)](https://github.com/AuroraSpeak/Server/actions/workflows/release.yml)
+[![Docker Image](https://img.shields.io/badge/docker-ready-blue)](https://ghcr.io/auroraspeak/auraspeak)
+[![Semgrep Security Scan](https://img.shields.io/badge/security-scanned%20by%20semgrep-green)](https://semgrep.dev)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
+[![Version](https://img.shields.io/github/package-json/v/AuroraSpeak/Server)](https://github.com/AuroraSpeak/Server/releases)
 
 > ⚠️ **This project is currently in _alpha_. Breaking changes are likely, and stability is not guaranteed.**
 
