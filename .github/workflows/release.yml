@@ -3,7 +3,7 @@ name: Release Build & Deploy
 on:
   push:
     branches:
-      - main
+      - dev
 
 jobs:
   release:
@@ -99,9 +99,8 @@ jobs:
 
           git add package.json pnpm-lock.yaml CHANGELOG.md
           git commit -m "chore(release): v$VERSION [skip ci]"
-
           git tag "v$VERSION"
-          git push origin main --tags
+          git push origin dev --tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
