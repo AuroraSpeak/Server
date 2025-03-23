@@ -84,8 +84,13 @@ jobs:
         run: |
           docker push ghcr.io/${OWNER_LC}/auraspeak:${VERSION}
 
+      - name: Prepare clean source folder
+        run: |
+          mkdir -p source
+          cp -r .next public package.json pnpm-lock.yaml scripts systemd source/
+
       - name: Archive source
-        run: tar --warning=no-file-changed -czf source.tar.gz .
+        run: tar -czf source.tar.gz -C source .
 
       - name: Generate changelog
         run: npx conventional-changelog -p angular -i CHANGELOG.md -s
