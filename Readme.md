@@ -1,5 +1,8 @@
 ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/AuroraSpeak/Server?utm_source=oss&utm_medium=github&utm_campaign=AuroraSpeak%2FServer&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
+> ⚠️ **This project is currently in _alpha_. Breaking changes are likely, and stability is not guaranteed.**
+
+---
 ## 🌟 Overview
 
 AuraSpeak is a feature-rich voice communication platform designed for gamers, teams, and communities. Built with Next.js and WebRTC, it offers high-quality, low-latency voice chat with a sleek, customizable interface. Unlike traditional platforms, AuraSpeak focuses on providing a seamless audio experience with minimal resource usage.
