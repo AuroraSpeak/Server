@@ -41,12 +41,12 @@ jobs:
       - name: Build Next.js app
         run: pnpm run build
 
-      - name: Prepare package layout
+      - name: Prepare app package layout
         run: |
           mkdir -p pkg/opt/next-app
           mkdir -p pkg/etc/systemd/system
 
-          cp -r out pkg/opt/next-app/
+          cp -r .next public package.json pnpm-lock.yaml pkg/opt/next-app/
           cp scripts/start.sh pkg/opt/next-app/start.sh
           chmod +x pkg/opt/next-app/start.sh
           cp systemd/next-app.service pkg/etc/systemd/system/
@@ -62,7 +62,7 @@ jobs:
           fpm -s dir -t deb \
             -n next-app \
             -v "${VERSION}" \
-            --description "Next.js Static App" \
+            --description "Next.js Server App" \
             --deb-systemd pkg/etc/systemd/system/next-app.service \
             -C pkg .
 
