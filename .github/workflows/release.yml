@@ -1,12 +1,12 @@
-name: Build & Release
+name: PR Build & Security Scan
 
 on:
-  push:
-    tags:
-      - 'v*'
+  pull_request:
+    branches:
+      - main  # or your default branch
 
 jobs:
-  build-and-release:
+  build-and-scan:
     runs-on: ubuntu-latest
     steps:
       # 📦 Checkout code
@@ -23,7 +23,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # 🔐 Semgrep security & bug scan
+      # 🔐 Run Semgrep scan
       - name: Run Semgrep scan
         uses: returntocorp/semgrep-action@v1
         with:
@@ -32,70 +32,8 @@ jobs:
             p/react
             p/nodejs
 
-      # 🏗️ Build Next.js app
+      # 🏗️ Build Next.js app (optional in PRs, but helps catch build issues early)
       - name: Build & Export
         run: |
           npm run build
           npm run export
-
-      # 📦 Prepare package layout
-      - name: Prepare package layout
-        run: |
-          mkdir -p pkg/opt/next-app
-          mkdir -p pkg/etc/systemd/system
-
-          cp -r out pkg/opt/next-app/
-          cp scripts/start.sh pkg/opt/next-app/start.sh
-          chmod +x pkg/opt/next-app/start.sh
-          cp systemd/next-app.service pkg/etc/systemd/system/
-
-      # 📦 Install fpm (for .deb package)
-      - name: Install fpm
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev build-essential
-          sudo gem install --no-document fpm
-
-      # 📦 Create .deb package
-      - name: Create .deb package
-        run: |
-          fpm -s dir -t deb \
-            -n next-app \
-            -v "${GITHUB_REF_NAME#v}" \
-            --description "Next.js Static App" \
-            --deb-systemd pkg/etc/systemd/system/next-app.service \
-            -C pkg .
-
-      # 🐳 Build Docker image
-      - name: Build Docker image
-        run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/next-app:${GITHUB_REF_NAME#v} .
-
-      # 🔑 Login to GitHub Container Registry
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # 📤 Push Docker image
-      - name: Push Docker image
-        run: |
-          docker push ghcr.io/${{ github.repository_owner }}/next-app:${GITHUB_REF_NAME#v}
-
-      # 🗄️ Archive source code
-      - name: Archive source
-        run: |
-          tar -czf source.tar.gz .
-
-      # 🚀 GitHub Release
-      - name: GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            *.deb
-            source.tar.gz
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
