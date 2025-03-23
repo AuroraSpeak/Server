@@ -49,7 +49,7 @@ jobs:
           mkdir -p pkg/opt/auraspeak
           mkdir -p pkg/etc/systemd/system
 
-          cp -r .next public package.json pnpm-lock.yaml .env pkg/opt/auraspeak/
+          cp -r .next public package.json pnpm-lock.yaml pkg/opt/auraspeak/
           cp scripts/start.sh pkg/opt/auraspeak/start.sh
           chmod +x pkg/opt/auraspeak/start.sh
           cp systemd/auraspeak.service pkg/etc/systemd/system/
