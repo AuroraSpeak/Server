@@ -85,7 +85,7 @@ jobs:
           docker push ghcr.io/${OWNER_LC}/auraspeak:${VERSION}
 
       - name: Archive source
-        run: tar -czf source.tar.gz .
+        run: tar --warning=no-file-changed -czf source.tar.gz .
 
       - name: Generate changelog
         run: npx conventional-changelog -p angular -i CHANGELOG.md -s
