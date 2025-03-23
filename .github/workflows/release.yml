@@ -52,7 +52,6 @@ jobs:
         run: |
           mkdir -p pkg/opt/auraspeak
           mkdir -p pkg/etc/systemd/system
-
           cp -r .next public package.json pnpm-lock.yaml scripts systemd pkg/opt/auraspeak/
           cp systemd/auraspeak.service pkg/etc/systemd/system/
 
@@ -104,24 +103,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PUSH_PAT }}
         run: |
+          # Bump version without tagging
+          pnpm version patch --no-git-tag-version
           VERSION=$(jq -r .version package.json)
-
-          # Clone the repo fresh using the token (in a temp folder)
-          git clone https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git repo
+          
+          # Clone the repo fresh using the dev branch and PAT
+          git clone --branch dev https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git repo
           cd repo
-
+          
           git config user.name "AuraSpeak CI"
           git config user.email "ci@auraspeak.dev"
-
+          
           cp ../package.json ../pnpm-lock.yaml ../CHANGELOG.md ./
-
+          
           git add package.json pnpm-lock.yaml CHANGELOG.md
           git commit -m "chore(release): v$VERSION [skip ci]"
           git tag "v$VERSION"
-
+          
           git push origin dev --follow-tags
-
-
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
