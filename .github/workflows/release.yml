@@ -52,13 +52,18 @@ jobs:
         run: |
           mkdir -p pkg/opt/auraspeak
           mkdir -p pkg/etc/systemd/system
+
           cp -r .next public package.json pnpm-lock.yaml scripts systemd pkg/opt/auraspeak/
+          cp systemd/auraspeak.service pkg/etc/systemd/system/
 
       - name: Install fpm
         run: |
           sudo apt-get update
           sudo apt-get install -y ruby ruby-dev build-essential
           sudo gem install --no-document fpm
+
+      - name: Check service file exists
+        run: test -f pkg/etc/systemd/system/auraspeak.service
 
       - name: Create .deb package
         run: |
