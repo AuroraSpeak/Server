@@ -3,33 +3,29 @@ name: PR Build & Security Scan
 on:
   pull_request:
     branches:
-      - main  # or change this to your default branch
+      - main
 
 jobs:
   build-and-scan:
     runs-on: ubuntu-latest
     steps:
-      #  Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 🔧 Set up Node.js
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      #  Set up pnpm
       - name: Set up pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8  # adjust if you use a different version
+          version: 8
 
-      #  Install dependencies (skip peer dep conflicts)
+      # ✅ Correct pnpm install (no --no-peer-deps)
       - name: Install dependencies
-        run: pnpm install --no-peer-deps
+        run: pnpm install
 
-      #  Semgrep scan
       - name: Run Semgrep scan
         uses: returntocorp/semgrep-action@v1
         with:
@@ -38,7 +34,6 @@ jobs:
             p/react
             p/nodejs
 
-      # 🏗️ Build and Export
       - name: Build & Export
         run: |
           pnpm run build
