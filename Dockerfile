@@ -1,14 +1,14 @@
-# Dockerfile
-FROM node:18-alpine
+FROM node:18
 
 WORKDIR /app
 
 COPY . .
 
-RUN npm install
-RUN npm run build && npm run export
-RUN npm install -g serve
+RUN corepack enable && corepack prepare pnpm@8.6.12 --activate
+
+RUN pnpm install --frozen-lockfile
+RUN pnpm build
 
 EXPOSE 3000
 
-CMD ["serve", "out", "-l", "3000"]
+CMD ["pnpm", "start"]

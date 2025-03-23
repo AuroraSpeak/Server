@@ -41,15 +41,15 @@ jobs:
       - name: Build Next.js app
         run: pnpm run build
 
-      - name: Prepare app package layout
+      - name: Prepare package layout
         run: |
-          mkdir -p pkg/opt/next-app
+          mkdir -p pkg/opt/auraspeak
           mkdir -p pkg/etc/systemd/system
 
-          cp -r .next public package.json pnpm-lock.yaml pkg/opt/next-app/
-          cp scripts/start.sh pkg/opt/next-app/start.sh
-          chmod +x pkg/opt/next-app/start.sh
-          cp systemd/next-app.service pkg/etc/systemd/system/
+          cp -r .next public package.json pnpm-lock.yaml pkg/opt/auraspeak/
+          cp scripts/start.sh pkg/opt/auraspeak/start.sh
+          chmod +x pkg/opt/auraspeak/start.sh
+          cp systemd/auraspeak.service pkg/etc/systemd/system/
 
       - name: Install fpm
         run: |
@@ -60,15 +60,15 @@ jobs:
       - name: Create .deb package
         run: |
           fpm -s dir -t deb \
-            -n next-app \
+            -n auraspeak \
             -v "${VERSION}" \
-            --description "Next.js Server App" \
-            --deb-systemd pkg/etc/systemd/system/next-app.service \
+            --description "AuraSpeak Next.js Server App" \
+            --deb-systemd pkg/etc/systemd/system/auraspeak.service \
             -C pkg .
 
       - name: Build Docker image
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/next-app:${VERSION} .
+          docker build -t ghcr.io/${{ github.repository_owner,, }}/auraspeak:${VERSION} .
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -79,7 +79,7 @@ jobs:
 
       - name: Push Docker image
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/next-app:${VERSION}
+          docker push ghcr.io/${{ github.repository_owner,, }}/auraspeak:${VERSION}
 
       - name: Archive source
         run: tar -czf source.tar.gz .
@@ -108,7 +108,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
+          name: AuraSpeak v${{ env.VERSION }}
           files: |
             *.deb
             source.tar.gz
