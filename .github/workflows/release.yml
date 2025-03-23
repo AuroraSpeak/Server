@@ -1,0 +1,116 @@
+name: Release Build & Deploy
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run Semgrep scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/react
+            p/nodejs
+
+      - name: Read version from package.json
+        id: get_version
+        run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+
+      - name: Build Next.js app
+        run: pnpm run build
+
+      - name: Prepare package layout
+        run: |
+          mkdir -p pkg/opt/auraspeak
+          mkdir -p pkg/etc/systemd/system
+
+          cp -r .next public package.json pnpm-lock.yaml .env pkg/opt/auraspeak/
+          cp scripts/start.sh pkg/opt/auraspeak/start.sh
+          chmod +x pkg/opt/auraspeak/start.sh
+          cp systemd/auraspeak.service pkg/etc/systemd/system/
+
+      - name: Install fpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential
+          sudo gem install --no-document fpm
+
+      - name: Create .deb package
+        run: |
+          fpm -s dir -t deb \
+            -n auraspeak \
+            -v "${VERSION}" \
+            --description "AuraSpeak Next.js Server App" \
+            --deb-systemd pkg/etc/systemd/system/auraspeak.service \
+            -C pkg .
+
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner,, }}/auraspeak:${VERSION} .
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker image
+        run: |
+          docker push ghcr.io/${{ github.repository_owner,, }}/auraspeak:${VERSION}
+
+      - name: Archive source
+        run: tar -czf source.tar.gz .
+
+      - name: Generate changelog
+        run: npx conventional-changelog -p angular -i CHANGELOG.md -s
+        env:
+          HUSKY: 0
+
+      - name: Bump version, tag, and push
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          pnpm version patch --no-git-tag-version
+          VERSION=$(jq -r .version package.json)
+
+          git add package.json pnpm-lock.yaml CHANGELOG.md
+          git commit -m "chore(release): v$VERSION [skip ci]"
+          git tag "v$VERSION"
+          git push origin dev --tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: AuraSpeak v${{ env.VERSION }}
+          files: |
+            *.deb
+            source.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
