@@ -1,0 +1,480 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.1;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0.3;
+    transform: scale(1.05);
+  }
+}
+
+/* WebRTC audio visualization */
+@keyframes pulse-audio {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+}
+
+.audio-pulse {
+  animation: pulse-audio 2s infinite;
+}
+
+.audio-level-indicator {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  height: 4px;
+  background-color: rgba(124, 77, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.audio-level-bar {
+  height: 100%;
+  background-color: rgb(124, 77, 255);
+  transition: width 0.1s ease-out;
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 262 83% 58%; /* Gaming purple */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 186 100% 50%; /* Cyan */
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 349 100% 54%; /* Gaming red */
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* AuraSpeak unique dark theme */
+    --background: 230 15% 10%; /* Darker blue-tinted background */
+    --foreground: 210 40% 98%;
+    --card: 230 15% 12%; /* Slightly lighter than background */
+    --card-foreground: 210 40% 98%;
+    --popover: 230 15% 12%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 262 70% 60%; /* Purple primary */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 190 80% 50%; /* Teal secondary */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 230 15% 15%; /* Slightly lighter than card */
+    --muted-foreground: 215 20% 75%;
+    --accent: 330 80% 60%; /* Magenta accent */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Custom theme specific colors */
+    --theme-bg: 230 15% 10%;
+    --theme-channels: 230 15% 12%;
+    --theme-chat: 230 15% 14%;
+    --theme-members: 230 15% 12%;
+    --theme-text-normal: 0 0% 100%;
+    --theme-text-muted: 214 10% 70%;
+    --theme-interactive: 210 9% 87%;
+    --theme-interactive-hover: 0 0% 100%;
+    --theme-primary: 262 70% 60%;
+    --theme-secondary: 190 80% 50%;
+    --theme-success: 150 60% 50%;
+    --theme-warning: 40 90% 60%;
+    --theme-danger: 0 80% 60%;
+    --theme-special: 290 70% 60%;
+  }
+}
+
+/* Discord-like styles */
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.server-sidebar {
+  background-color: hsl(230, 15%, 8%);
+  width: 72px;
+  flex-shrink: 0;
+}
+
+/* Add these styles for the AuraLogo in the sidebar */
+.aura-sidebar button.active AuraLogo,
+.aura-sidebar button:hover AuraLogo {
+  border-radius: 16px;
+}
+
+.aura-divider {
+  height: 2px;
+  width: 32px;
+  background-color: hsl(220, 7%, 12%);
+  margin: 8px auto;
+}
+
+.aura-server {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  margin: 8px 0;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: hsl(262, 70%, 40%);
+  color: hsl(0, 0%, 100%);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.aura-server:hover {
+  border-radius: 16px;
+  background-color: hsl(262, 70%, 60%);
+}
+
+.aura-server.active {
+  border-radius: 16px;
+  background-color: hsl(262, 70%, 60%);
+}
+
+/* AuraSpeak channel sidebar styles */
+.aura-channels {
+  background-color: hsl(230, 15%, 12%);
+  width: 240px;
+  flex-shrink: 0;
+}
+
+/* Update the aura-category style to be more visible */
+.aura-category {
+  color: hsl(214, 10%, 80%);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Update the aura-channel class to have better default text color */
+.aura-channel {
+  font-size: 0.9rem;
+  transition: all 0.1s ease;
+  color: hsl(210, 30%, 80%); /* Brighter default color for inactive channels */
+}
+
+/* Add a new style for the Add Channel buttons to make them more visible */
+.aura-channel.add-channel {
+  opacity: 0.8;
+  color: hsl(262, 70%, 80%);
+}
+.aura-channel.add-channel:hover {
+  opacity: 1;
+  color: hsl(262, 70%, 90%);
+}
+
+.aura-channel.active {
+  background-color: hsla(262, 70%, 60%, 0.2);
+  color: white;
+}
+
+.avatar-with-status {
+  position: relative;
+}
+
+.status-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid hsl(230, 15%, 12%);
+}
+
+.status-online {
+  background-color: hsl(150, 60%, 50%);
+}
+
+.status-idle {
+  background-color: hsl(40, 90%, 60%);
+}
+
+.status-dnd {
+  background-color: hsl(0, 80%, 60%);
+}
+
+.status-offline {
+  background-color: hsl(214, 10%, 50%);
+}
+
+.chat-area {
+  background-color: hsl(230, 15%, 14%);
+  flex: 1;
+  min-width: 0;
+}
+
+.members-sidebar {
+  background-color: hsl(230, 15%, 12%);
+  width: 240px;
+  flex-shrink: 0;
+}
+
+.server-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  margin: 8px 0;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: hsl(262, 70%, 40%);
+  color: hsl(0, 0%, 100%);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.server-icon:hover {
+  border-radius: 16px;
+  background-color: hsl(262, 70%, 60%);
+}
+
+.server-icon.active {
+  border-radius: 16px;
+  background-color: hsl(262, 70%, 60%);
+}
+
+.server-divider {
+  height: 2px;
+  width: 32px;
+  background-color: hsl(220, 7%, 12%);
+  margin: 8px auto;
+}
+
+.channel-category {
+  color: hsl(214, 8%, 62%);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin: 16px 8px 4px 8px;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.channel-item {
+  border-radius: 4px;
+  margin: 0 8px;
+  padding: 6px 8px;
+  color: hsl(214, 8%, 62%);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.channel-item:hover {
+  background-color: hsl(220, 7%, 12%);
+  color: hsl(210, 9%, 87%);
+}
+
+.channel-item.active {
+  background-color: hsl(220, 7%, 16%);
+  color: hsl(0, 0%, 100%);
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  margin: 0 8px;
+  border-radius: 4px;
+  color: hsl(210, 9%, 87%);
+}
+
+.user-item:hover {
+  background-color: hsl(220, 7%, 12%);
+}
+
+.user-avatar {
+  position: relative;
+  margin-right: 8px;
+}
+
+.message-group {
+  margin-bottom: 16px;
+}
+
+.message {
+  display: flex;
+  padding: 2px 0;
+  margin: 0 16px;
+}
+
+.message:hover {
+  background-color: hsla(220, 7%, 12%, 0.3);
+}
+
+.message-timestamp {
+  font-size: 0.75rem;
+  color: hsl(214, 8%, 62%);
+  margin-left: 8px;
+}
+
+.message-content {
+  font-size: 0.9375rem;
+  color: hsl(0, 0%, 100%);
+  white-space: pre-wrap;
+}
+
+.message-input-container {
+  padding: 0 16px 24px 16px;
+  background-color: hsl(220, 6%, 10%);
+}
+
+.message-input {
+  background-color: hsl(230, 15%, 18%);
+  border-radius: 8px;
+  border: none;
+  color: white;
+  padding: 12px;
+  width: 100%;
+  resize: none;
+  outline: none;
+}
+
+.message-input:focus {
+  background-color: hsl(230, 15%, 20%);
+}
+
+.scrollable {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: hsl(220, 7%, 15%) transparent;
+}
+
+.scrollable::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable::-webkit-scrollbar-thumb {
+  background-color: hsl(220, 7%, 15%);
+  border-radius: 4px;
+}
+
+.user-section {
+  margin-top: 24px;
+}
+
+.user-section-title {
+  color: hsl(214, 8%, 62%);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin: 0 16px 8px 16px;
+}
+
+.user-status {
+  font-size: 0.75rem;
+  color: hsl(214, 8%, 62%);
+}
+
+.user-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(0, 0%, 100%);
+}
+
+.channel-header {
+  height: 48px;
+  border-bottom: 1px solid hsl(220, 7%, 12%);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  color: hsl(0, 0%, 100%);
+  font-weight: 600;
+}
+
+.server-header {
+  height: 48px;
+  border-bottom: 1px solid hsl(220, 7%, 12%);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  color: hsl(0, 0%, 100%);
+  font-weight: 600;
+}
+
+.user-panel {
+  height: 52px;
+  background-color: hsl(220, 8%, 6%);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  margin-top: auto;
+}
+
+/* Add styles for the logout button */
+.text-aura-danger {
+  color: hsl(0, 80%, 60%);
+}
+
+.text-aura-danger:hover {
+  color: hsl(0, 80%, 70%);
+  background-color: hsla(0, 80%, 60%, 0.1);
+}
+
+/* Add styles for dropdown menu */
+.dropdown-menu {
+  background-color: hsl(230, 15%, 15%);
+  border: 1px solid hsl(230, 15%, 18%);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dropdown-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.1s ease;
+}
+
+.dropdown-item:hover {
+  background-color: hsla(262, 70%, 60%, 0.1);
+}
+
