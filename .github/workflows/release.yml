@@ -3,7 +3,7 @@ name: Release Build & Deploy
 on:
   push:
     branches:
-      - dev
+      - main
 
 jobs:
   release:
