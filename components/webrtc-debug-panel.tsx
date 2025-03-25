@@ -31,6 +31,9 @@ const WebRTCDebugPanel: React.FC = () => {
     isSpeaking,
     peerConnections,
     getAudioLevel,
+    voiceChannelUsers,
+    muteStatus,
+    userPings,
   } = rtc
 
   const [visible, setVisible] = useState(true)
@@ -65,9 +68,8 @@ const WebRTCDebugPanel: React.FC = () => {
       document.removeEventListener("mousemove", onMouseMove)
       document.removeEventListener("mouseup", onMouseUp)
     }
-  })
+  }, [dragging, rel])
 
-  // Force panel to re-render every second to reflect live audio levels
   useEffect(() => {
     const interval = setInterval(() => setRenderTick((t) => t + 1), 1000)
     return () => clearInterval(interval)
@@ -90,8 +92,8 @@ const WebRTCDebugPanel: React.FC = () => {
         position: "fixed",
         left: position.x,
         top: position.y,
-        width: 340,
-        maxHeight: 420,
+        width: 360,
+        maxHeight: 500,
         overflowY: "auto",
         background: "#111",
         color: "#0f0",
@@ -129,29 +131,49 @@ const WebRTCDebugPanel: React.FC = () => {
           ✕
         </button>
       </div>
+
       <div style={{ marginBottom: 8 }}>
         🎤 Mic: {isMicrophoneActive ? "ON" : "OFF"} | 🗣 Speaking: {isSpeaking ? "YES" : "NO"}
       </div>
+
       <div style={{ marginBottom: 8 }}>
         👥 Peers Connected: {peerConnections.size} <br />
         🟢 Active Speakers: {[...activeSpeakers].join(", ") || "None"}
       </div>
+
       <div style={{ marginBottom: 8 }}>
         🔊 Audio Levels:
         <ul style={{ listStyle: "none", paddingLeft: 0 }}>
-          {[...peerConnections.entries()].map(([id]) => (
-            <li key={id}>
-              {id}: {getAudioLevel(id).toFixed(1)}
+          {[...peerConnections.keys()].map((id) => (
+            <li key={id}>{id}: {getAudioLevel(id).toFixed(1)}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div style={{ marginBottom: 8 }}>
+        👤 Voice Channel Users:
+        <ul style={{ listStyle: "none", paddingLeft: 0 }}>
+          {[...voiceChannelUsers.entries()].map(([channelId, users]) => (
+            <li key={channelId}>
+              Channel {channelId}:
+              <ul>
+                {[...users].map((userId) => (
+                  <li key={userId}>
+                    {userId}
+                    {muteStatus.get(userId) ? " 🔇" : " 🔊"} |
+                    Ping: {userPings.get(userId) ?? "n/a"}ms
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>
       </div>
+
       <div>
         <div style={{ fontWeight: "bold", marginBottom: 4 }}>📄 Logs:</div>
         {[...logs].reverse().map((log, i) => (
-          <div key={i} style={{ whiteSpace: "pre-wrap" }}>
-            {log}
-          </div>
+          <div key={i} style={{ whiteSpace: "pre-wrap" }}>{log}</div>
         ))}
       </div>
     </div>

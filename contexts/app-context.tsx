@@ -14,6 +14,8 @@ export type User = {
   avatarUrl?: string
   status: "online" | "idle" | "dnd" | "offline"
   roleString?: string
+  isMuted?: boolean
+  isDeafened?: boolean
 }
 
 export type Message = {
@@ -68,6 +70,8 @@ type AppContextType = {
   toggleMembersSidebar: () => void
   showMembersSidebar: boolean
   getAudioLevel: (userId: string) => number
+  currentUser: User | null;
+  createServer: (serverData: { name: string; icon: string; color?: string; type?: string }) => Promise<Server>
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -106,11 +110,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const fetchServers = async () => {
       try {
         // In a real app, this would be an API call
-        const mockServers: Server[] = [
-          { id: "server-1", name: "Gaming Hub", icon: "G" },
-          { id: "server-2", name: "Dev Team", icon: "D" },
-          { id: "server-3", name: "Movie Club", icon: "M" },
-        ]
+        
 
         setServers(mockServers)
 
@@ -134,21 +134,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       try {
         // Mock data - in a real app, this would be an API call
-        const mockChannels: Channel[] = [
-          { id: "channel-1", name: "general", type: "text", serverId: "server-1" },
-          { id: "channel-2", name: "gaming-news", type: "text", serverId: "server-1" },
-          { id: "channel-3", name: "memes", type: "text", serverId: "server-1" },
-          { id: "channel-4", name: "General Voice", type: "voice", serverId: "server-1" },
-          { id: "channel-5", name: "Gaming Voice", type: "voice", serverId: "server-1" },
-
-          { id: "channel-6", name: "general", type: "text", serverId: "server-2" },
-          { id: "channel-7", name: "dev-chat", type: "text", serverId: "server-2" },
-          { id: "channel-8", name: "Dev Voice", type: "voice", serverId: "server-2" },
-
-          { id: "channel-9", name: "general", type: "text", serverId: "server-3" },
-          { id: "channel-10", name: "movie-recs", type: "text", serverId: "server-3" },
-          { id: "channel-11", name: "Movie Night", type: "voice", serverId: "server-3" },
-        ]
+        
 
         const serverChannels = mockChannels.filter((channel) => channel.serverId === activeServer)
         setChannels(serverChannels)
@@ -162,7 +148,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     fetchChannels()
-  }, [activeServer, activeChannel])
+  }, [activeServer, activeChannel]) 
 
   // Fetch messages when active channel changes
   useEffect(() => {
@@ -171,155 +157,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       try {
         // Mock data - in a real app, this would be an API call
-        const mockMessages: Message[] = [
-          {
-            id: "msg-1",
-            channelId: "channel-1",
-            userId: "user-1",
-            content: "Hey everyone! Welcome to the server!",
-            timestamp: "14:35",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-1",
-              fullName: "Server Admin",
-              email: "admin@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-          {
-            id: "msg-2",
-            channelId: "channel-1",
-            userId: "user-2",
-            content: "Thanks for the invite! Looking forward to gaming with you all.",
-            timestamp: "13:38",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-2",
-              fullName: "GamerX",
-              email: "gamerx@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-          {
-            id: "msg-3",
-            channelId: "channel-1",
-            userId: "user-2",
-            content: "I've been playing a lot of Valorant lately.",
-            timestamp: "13:38",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-2",
-              fullName: "GamerX",
-              email: "gamerx@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-          {
-            id: "msg-4",
-            channelId: "channel-1",
-            userId: "user-3",
-            content: "What games is everyone playing these days?",
-            timestamp: "14:06",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-3",
-              fullName: "FragMaster",
-              email: "frag@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-          // Channel 2 messages
-          {
-            id: "msg-5",
-            channelId: "channel-2",
-            userId: "user-1",
-            content: "Did you hear about the new Cyberpunk 2077 update?",
-            timestamp: "10:15",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-1",
-              fullName: "Server Admin",
-              email: "admin@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-          {
-            id: "msg-6",
-            channelId: "channel-2",
-            userId: "user-3",
-            content: "Yeah, it looks amazing! Can't wait to try it out.",
-            timestamp: "10:18",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-3",
-              fullName: "FragMaster",
-              email: "frag@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-          // Channel 3 messages
-          {
-            id: "msg-7",
-            channelId: "channel-3",
-            userId: "user-2",
-            content: "Check out this hilarious gaming meme!",
-            timestamp: "09:45",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-2",
-              fullName: "GamerX",
-              email: "gamerx@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-            files: [
-              {
-                name: "gaming-meme.jpg",
-                type: "image",
-                size: "1.2 MB",
-                url: "/placeholder.svg?height=300&width=400",
-              },
-            ],
-          },
-          // Channel 6 messages (server 2)
-          {
-            id: "msg-8",
-            channelId: "channel-6",
-            userId: "user-1",
-            content: "Welcome to the Dev Team server!",
-            timestamp: "11:30",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-1",
-              fullName: "Server Admin",
-              email: "admin@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-          // Channel 9 messages (server 3)
-          {
-            id: "msg-9",
-            channelId: "channel-9",
-            userId: "user-1",
-            content: "Welcome to the Movie Club server!",
-            timestamp: "12:00",
-            createdAt: new Date().toISOString(),
-            user: {
-              id: "user-1",
-              fullName: "Server Admin",
-              email: "admin@example.com",
-              status: "online",
-              avatarUrl: "/placeholder.svg?height=40&width=40",
-            },
-          },
-        ]
+        
 
         const channelMessages = mockMessages.filter((message) => message.channelId === activeChannel)
         setMessages(channelMessages)
@@ -338,64 +176,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       try {
         // Mock data - in a real app, this would be an API call
-        const mockMembers: User[] = [
-          {
-            id: "user-1",
-            fullName: "Server Admin",
-            email: "admin@example.com",
-            status: "online",
-            avatarUrl: "/placeholder.svg?height=40&width=40",
-            roleString: "Admin,Moderator",
-          },
-          {
-            id: "user-2",
-            fullName: "GamerX",
-            email: "gamerx@example.com",
-            status: "online",
-            avatarUrl: "/placeholder.svg?height=40&width=40",
-            roleString: "Member",
-          },
-          {
-            id: "user-3",
-            fullName: "FragMaster",
-            email: "frag@example.com",
-            status: "online",
-            avatarUrl: "/placeholder.svg?height=40&width=40",
-            roleString: "Moderator",
-          },
-          {
-            id: "user-4",
-            fullName: "Project Lead",
-            email: "lead@example.com",
-            status: "online",
-            avatarUrl: "/placeholder.svg?height=40&width=40",
-            roleString: "Member",
-          },
-          {
-            id: "user-5",
-            fullName: "MovieBuff",
-            email: "movie@example.com",
-            status: "online",
-            avatarUrl: "/placeholder.svg?height=40&width=40",
-            roleString: "Member",
-          },
-          {
-            id: "user-6",
-            fullName: "CodeNinja",
-            email: "code@example.com",
-            status: "offline",
-            avatarUrl: "/placeholder.svg?height=40&width=40",
-            roleString: "Member",
-          },
-          {
-            id: "user-7",
-            fullName: "DesignGuru",
-            email: "design@example.com",
-            status: "offline",
-            avatarUrl: "/placeholder.svg?height=40&width=40",
-            roleString: "Member",
-          },
-        ]
+        
 
         setMembers(mockMembers)
       } catch (error) {
@@ -518,6 +299,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return webrtc.getAudioLevel(userId)
   }
 
+  const currentUser: User = user as User;
+  const createServer = async (serverData: {
+    name: string
+    icon: string
+    color?: string
+    type?: string
+  }): Promise<Server> => {
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const newServer: Server = {
+      id: `server-${Date.now()}`,
+      name: serverData.name,
+      icon: serverData.icon,
+      color: serverData.color,
+    }
+
+    setServers((prev) => [...prev, newServer])
+    return newServer
+  }
+ 
   // Provide the context value
   const contextValue: AppContextType = {
     servers,
@@ -541,6 +342,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleMembersSidebar,
     showMembersSidebar,
     getAudioLevel,
+    currentUser,
+    createServer
   }
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>

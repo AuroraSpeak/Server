@@ -1,12 +1,6 @@
 "use client"
 
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react"
+import React, { createContext, useContext, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/components/auth-provider"
 import type { User } from "@/contexts/app-context"
 import { getSocket } from "@/lib/socket"
@@ -27,11 +21,14 @@ type WebRTCContextType = {
   isMicrophoneActive: boolean
   isSpeaking: boolean
   activeSpeakers: Set<string>
+  logs: string[]
+  userPings: Map<string, number>
   joinVoiceChannel: (channelId: string, participants: User[]) => Promise<void>
   leaveVoiceChannel: () => void
   toggleMicrophone: () => void
   getAudioLevel: (userId: string) => number
-  logs: string[]
+  muteStatus: Map<string, boolean>
+  voiceChannelUsers: Map<string, Set<string>>
 }
 
 const WebRTCContext = createContext<WebRTCContextType | null>(null)
@@ -56,18 +53,19 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set())
   const [logs, setLogs] = useState<string[]>([])
+  const [userPings, setUserPings] = useState<Map<string, number>>(new Map())
+  const [muteStatus, setMuteStatus] = useState<Map<string, boolean>>(new Map())
+  const [voiceChannelUsers, setVoiceChannelUsers] = useState<Map<string, Set<string>>>(new Map())
 
   const socket = useRef<Socket | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionsRef = useRef<Map<string, PeerConnection>>(new Map())
-  const activeChannelRef = useRef<string | null>(null)
   const audioLevelsRef = useRef<Map<string, number>>(new Map())
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioAnalyserRef = useRef<AnalyserNode | null>(null)
 
-  const log = (message: string) => {
-    console.log(message)
-    setLogs((prev) => [...prev.slice(-50), message])
+  const log = (msg: string) => {
+    setLogs((prev) => [...prev.slice(-99), msg])
   }
 
   useEffect(() => {
@@ -75,6 +73,10 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => {
       audioContextRef.current?.close()
     }
+  }, [])
+
+  useEffect(() => {
+    fetch("/api/socket")
   }, [])
 
   useEffect(() => {
@@ -124,19 +126,12 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     pc.onicecandidate = (e) => {
       if (e.candidate && socket.current && user) {
-        log(`[ICE] Sending ICE candidate to ${remoteUserId}`)
+        log(`[ICE] Candidate for ${remoteUserId}`)
         socket.current.emit("signal", {
           to: remoteUserId,
           from: user.id,
           data: { candidate: e.candidate },
         })
-      }
-    }
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed") {
-        log(`[RECONNECT] Connection failed with ${remoteUserId}, retrying...`)
-        initiateConnection(remoteUserId)
       }
     }
 
@@ -183,10 +178,9 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const handleSignaling = () => {
     socket.current?.on("signal", async ({ from, data }) => {
-      log(`[SIGNALING] Received signal from ${from}: ${JSON.stringify(data)}`)
+      log(`[SIGNAL] from ${from}: ${data.type || "candidate"}`)
       const pc =
-        peerConnectionsRef.current.get(from)?.connection ||
-        createPeerConnection(from)
+        peerConnectionsRef.current.get(from)?.connection || createPeerConnection(from)
 
       if (!peerConnectionsRef.current.has(from)) {
         peerConnectionsRef.current.set(from, { userId: from, connection: pc })
@@ -194,31 +188,51 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       if (data.type === "offer") {
-        log(`[SIGNALING] Received offer from ${from}, setting remote description...`)
         await pc.setRemoteDescription(new RTCSessionDescription(data))
-        log(`[SIGNALING] Creating answer for ${from}...`)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
-        log(`[SIGNALING] Sent answer to ${from}`)
         socket.current?.emit("signal", { to: from, from: user!.id, data: answer })
       } else if (data.type === "answer") {
-        log(`[SIGNALING] Received answer from ${from}, setting remote description...`)
         await pc.setRemoteDescription(new RTCSessionDescription(data))
       } else if (data.candidate) {
-        log(`[ICE] Received ICE candidate from ${from}`)
         await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
       }
     })
 
-    socket.current?.on("user-joined", async ({ userId }) => {
-      log(`[SIGNALING] New user joined: ${userId}`)
-      await initiateConnection(userId)
+    socket.current?.on("user-joined", ({ userId, channelId }) => {
+      setVoiceChannelUsers((prev) => {
+        const updated = new Map(prev)
+        const users = updated.get(channelId) ?? new Set()
+        users.add(userId)
+        updated.set(channelId, users)
+        return updated
+      })
+    })
+    
+    socket.current?.on("user-left", ({ userId, channelId }) => {
+      setVoiceChannelUsers((prev) => {
+        const updated = new Map(prev)
+        const users = updated.get(channelId)
+        if (users) {
+          users.delete(userId)
+          if (users.size === 0) updated.delete(channelId)
+          else updated.set(channelId, users)
+        }
+        return updated
+      })
+    })
+
+    socket.current?.on("user-muted", ({ userId, isMuted }) => {
+      setMuteStatus((prev) => {
+        const updated = new Map(prev)
+        updated.set(userId, isMuted)
+        return updated
+      })
     })
   }
 
   const initiateConnection = async (participantId: string) => {
     if (!user || !localStreamRef.current) return
-    log(`[SIGNALING] Creating offer for ${participantId}`)
     const pc = createPeerConnection(participantId)
     peerConnectionsRef.current.set(participantId, {
       userId: participantId,
@@ -229,7 +243,6 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
 
-    log(`[SIGNALING] Sent offer to ${participantId}`)
     socket.current?.emit("signal", {
       to: participantId,
       from: user.id,
@@ -244,8 +257,6 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStreamRef.current = stream
     setIsMicrophoneActive(true)
 
-    activeChannelRef.current = channelId
-
     socket.current = getSocket()
     socket.current.emit("join", { channelId, userId: user.id })
     handleSignaling()
@@ -255,6 +266,15 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await initiateConnection(p.id)
       }
     }
+
+    setInterval(() => {
+      if (!socket.current || !user) return
+      const start = Date.now()
+      socket.current.emit("ping", () => {
+        const duration = Date.now() - start
+        setUserPings((prev) => new Map(prev).set(user.id, duration))
+      })
+    }, 1000)
   }
 
   const leaveVoiceChannel = () => {
@@ -268,7 +288,6 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setIsMicrophoneActive(false)
     setIsSpeaking(false)
     setActiveSpeakers(new Set())
-    activeChannelRef.current = null
 
     socket.current?.disconnect()
     socket.current = null
@@ -290,11 +309,14 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     isMicrophoneActive,
     isSpeaking,
     activeSpeakers,
+    logs,
+    userPings,
     joinVoiceChannel,
     leaveVoiceChannel,
     toggleMicrophone,
     getAudioLevel,
-    logs,
+    muteStatus,
+    voiceChannelUsers, 
   }
 
   return <WebRTCContext.Provider value={value}>{children}</WebRTCContext.Provider>

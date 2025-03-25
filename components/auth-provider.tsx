@@ -4,6 +4,7 @@ import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useCsrfToken } from "@/hooks/useCsrfToken"
 
 type User = {
   id: string
@@ -29,6 +30,7 @@ export const useAuth = () => useContext(AuthContext)
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const { csrfToken } = useCsrfToken()
   const router = useRouter()
 
   useEffect(() => {
@@ -60,6 +62,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       const response = await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
+        headers: {
+          "X-CSRF-Token": csrfToken || "", // include token!
+        }
       })
 
       if (!response.ok) {

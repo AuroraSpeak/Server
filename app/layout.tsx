@@ -3,9 +3,10 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import AuthProvider from "@/components/auth-provider"
+import * as Sentry from '@sentry/nextjs';
 
 import './globals.css'
-import WebRTCDebugPanel from "@/components/WebRTCDebugPanel"
+import WebRTCDebugPanel from "@/components/webrtc-debug-panel"
 import { WebRTCProvider } from "@/contexts/webrtc-context"
 
 const inter = Inter({ subsets: ["latin"] })

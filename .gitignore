@@ -1,6 +1,8 @@
 # Node modules
 node_modules/
 
+data/
+
 # Build output
 .next/
 out/
@@ -39,3 +41,6 @@ prisma/migrations/
 # Optional: lockfiles (if you prefer one package manager only)
 # yarn.lock
 # package-lock.json
+
+# Sentry Config File
+.env.sentry-build-plugin
