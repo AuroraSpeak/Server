@@ -3,6 +3,11 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import AuthProvider from "@/components/auth-provider"
+import * as Sentry from '@sentry/nextjs';
+
+import './globals.css'
+import WebRTCDebugPanel from "@/components/webrtc-debug-panel"
+import { WebRTCProvider } from "@/contexts/webrtc-context"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -20,12 +25,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} h-full bg-[hsl(230,15%,10%)]`}>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <WebRTCProvider>
+          {children}
+          <WebRTCDebugPanel />
+          </WebRTCProvider> 
+        </AuthProvider>
       </body>
     </html>
   )
 }
-
-
-
-import './globals.css'

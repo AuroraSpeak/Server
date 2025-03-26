@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import AuraLogo from "./aura-logo"
 import type { Server } from "@/contexts/app-context"
+import { useState } from "react"
+import CreateServerDialog from "./create-server-dialog"
 
 interface ServerSidebarProps {
   activeServer: string
@@ -12,8 +14,9 @@ interface ServerSidebarProps {
 }
 
 export default function AuraServerSidebar({ activeServer, setActiveServer, servers }: ServerSidebarProps) {
+  const [showCreateServerDialog, setShowCreateServerDialog] = useState(false)
   const handleAddServer = () => {
-    alert("Add server functionality would open a dialog to create or join a server")
+    setShowCreateServerDialog(true)
   }
 
   const handleExploreServers = () => {
@@ -25,6 +28,7 @@ export default function AuraServerSidebar({ activeServer, setActiveServer, serve
   }
 
   return (
+    <>
     <div className="aura-sidebar flex flex-col items-center py-3 overflow-y-auto scrollable">
       <TooltipProvider>
         {/* Home button with AuraLogo */}
@@ -112,6 +116,8 @@ export default function AuraServerSidebar({ activeServer, setActiveServer, serve
         </Tooltip>
       </TooltipProvider>
     </div>
+    <CreateServerDialog isOpen={showCreateServerDialog} onClose={() => setShowCreateServerDialog(false)} />
+    </>
   )
 }
 

@@ -1,11 +1,13 @@
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useState, useEffect, useRef } from "react"
+import React, { createContext, useContext, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/components/auth-provider"
 import type { User } from "@/contexts/app-context"
+import { getSocket } from "@/lib/socket"
+import type { Socket } from "socket.io-client"
 
-// Define types for our WebRTC context
+// TYPES
+
 type PeerConnection = {
   userId: string
   connection: RTCPeerConnection
@@ -19,10 +21,14 @@ type WebRTCContextType = {
   isMicrophoneActive: boolean
   isSpeaking: boolean
   activeSpeakers: Set<string>
+  logs: string[]
+  userPings: Map<string, number>
   joinVoiceChannel: (channelId: string, participants: User[]) => Promise<void>
   leaveVoiceChannel: () => void
   toggleMicrophone: () => void
   getAudioLevel: (userId: string) => number
+  muteStatus: Map<string, boolean>
+  voiceChannelUsers: Map<string, Set<string>>
 }
 
 const WebRTCContext = createContext<WebRTCContextType | null>(null)
@@ -35,9 +41,8 @@ export const useWebRTC = () => {
   return context
 }
 
-// Configuration for RTCPeerConnection
 const rtcConfig: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:stun1.l.google.com:19302" }],
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 }
 
 export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -47,365 +52,272 @@ export const WebRTCProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isMicrophoneActive, setIsMicrophoneActive] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set())
+  const [logs, setLogs] = useState<string[]>([])
+  const [userPings, setUserPings] = useState<Map<string, number>>(new Map())
+  const [muteStatus, setMuteStatus] = useState<Map<string, boolean>>(new Map())
+  const [voiceChannelUsers, setVoiceChannelUsers] = useState<Map<string, Set<string>>>(new Map())
 
-  // Refs to maintain state in callbacks
+  const socket = useRef<Socket | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionsRef = useRef<Map<string, PeerConnection>>(new Map())
-  const activeChannelRef = useRef<string | null>(null)
-
-  // Audio processing for speech detection
+  const audioLevelsRef = useRef<Map<string, number>>(new Map())
   const audioContextRef = useRef<AudioContext | null>(null)
   const audioAnalyserRef = useRef<AnalyserNode | null>(null)
-  const audioLevelsRef = useRef<Map<string, number>>(new Map())
 
-  // Initialize audio context
+  const log = (msg: string) => {
+    setLogs((prev) => [...prev.slice(-99), msg])
+  }
+
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
-    }
-
+    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
     return () => {
-      if (audioContextRef.current) {
-        audioContextRef.current.close()
-      }
+      audioContextRef.current?.close()
     }
   }, [])
 
-  // Clean up when component unmounts
+  useEffect(() => {
+    fetch("/api/socket")
+  }, [])
+
   useEffect(() => {
     return () => {
       leaveVoiceChannel()
     }
   }, [])
 
-  // Function to get user media (microphone)
   const getUserMedia = async (): Promise<MediaStream> => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
-      })
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 
-      // Set up audio processing for speech detection
-      if (audioContextRef.current && stream) {
-        const audioSource = audioContextRef.current.createMediaStreamSource(stream)
-        const analyser = audioContextRef.current.createAnalyser()
-        analyser.fftSize = 256
-        audioSource.connect(analyser)
-        audioAnalyserRef.current = analyser
-
-        // Start monitoring audio levels
-        monitorAudioLevels()
-      }
-
-      return stream
-    } catch (error) {
-      console.error("Error accessing microphone:", error)
-      throw error
+    if (audioContextRef.current) {
+      const source = audioContextRef.current.createMediaStreamSource(stream)
+      const analyser = audioContextRef.current.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+      audioAnalyserRef.current = analyser
+      monitorAudioLevels()
     }
+
+    return stream
   }
 
-  // Monitor audio levels to detect speaking
   const monitorAudioLevels = () => {
-    if (!audioAnalyserRef.current) return
-
     const analyser = audioAnalyserRef.current
+    if (!analyser) return
     const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
-    const checkAudioLevel = () => {
-      if (!analyser) return
-
+    const check = () => {
       analyser.getByteFrequencyData(dataArray)
-
-      // Calculate average volume level
-      let sum = 0
-      for (let i = 0; i < dataArray.length; i++) {
-        sum += dataArray[i]
-      }
-      const average = sum / dataArray.length
-
-      // Update speaking state based on threshold
-      const isSpeakingNow = average > 20 // Adjust threshold as needed
-      setIsSpeaking(isSpeakingNow)
-
-      // Store local user's audio level
-      if (user) {
-        audioLevelsRef.current.set(user.id, average)
-      }
-
-      requestAnimationFrame(checkAudioLevel)
+      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+      setIsSpeaking(avg > 20)
+      if (user) audioLevelsRef.current.set(user.id, avg)
+      requestAnimationFrame(check)
     }
-
-    checkAudioLevel()
+    check()
   }
 
-  // Create a peer connection for a participant
-  const createPeerConnection = (participantId: string): RTCPeerConnection => {
-    console.log(`Creating peer connection for ${participantId}`)
+  const createPeerConnection = (remoteUserId: string): RTCPeerConnection => {
+    const pc = new RTCPeerConnection(rtcConfig)
 
-    const peerConnection = new RTCPeerConnection(rtcConfig)
-
-    // Add local tracks to the peer connection
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        if (localStreamRef.current) {
-          peerConnection.addTrack(track, localStreamRef.current)
-        }
-      })
-    }
-
-    // Handle ICE candidates
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        // In a real app, send this candidate to the remote peer via signaling server
-        console.log("New ICE candidate:", event.candidate)
-
-        // Simulate sending the ICE candidate to the remote peer
-        setTimeout(() => {
-          // This simulates receiving the ICE candidate on the other peer
-          // In a real app, this would happen through your signaling server
-        }, 500)
+      for (const track of localStreamRef.current.getTracks()) {
+        pc.addTrack(track, localStreamRef.current)
       }
     }
 
-    // Handle connection state changes
-    peerConnection.onconnectionstatechange = () => {
-      console.log(`Connection state for ${participantId}:`, peerConnection.connectionState)
+    pc.onicecandidate = (e) => {
+      if (e.candidate && socket.current && user) {
+        log(`[ICE] Candidate for ${remoteUserId}`)
+        socket.current.emit("signal", {
+          to: remoteUserId,
+          from: user.id,
+          data: { candidate: e.candidate },
+        })
+      }
     }
 
-    // Handle ICE connection state changes
-    peerConnection.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state for ${participantId}:`, peerConnection.iceConnectionState)
-    }
+    pc.ontrack = (e) => {
+      if (e.track.kind === "audio") {
+        const stream = new MediaStream([e.track])
+        const audio = new Audio()
+        audio.srcObject = stream
+        audio.autoplay = true
 
-    // Handle incoming tracks
-    peerConnection.ontrack = (event) => {
-      console.log(`Received track from ${participantId}:`, event.track.kind)
-
-      // Only handle audio tracks
-      if (event.track.kind === "audio") {
-        const audioStream = new MediaStream([event.track])
-
-        // Create audio element to play the remote stream
-        const audioElement = new Audio()
-        audioElement.srcObject = audioStream
-        audioElement.autoplay = true
-
-        // Set up audio processing for this remote stream
         if (audioContextRef.current) {
-          const audioSource = audioContextRef.current.createMediaStreamSource(audioStream)
+          const source = audioContextRef.current.createMediaStreamSource(stream)
           const analyser = audioContextRef.current.createAnalyser()
           analyser.fftSize = 256
-          audioSource.connect(analyser)
-
-          // Monitor audio levels for this remote peer
+          source.connect(analyser)
           const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
-          const checkRemoteAudioLevel = () => {
+          const check = () => {
             analyser.getByteFrequencyData(dataArray)
-
-            // Calculate average volume level
-            let sum = 0
-            for (let i = 0; i < dataArray.length; i++) {
-              sum += dataArray[i]
-            }
-            const average = sum / dataArray.length
-
-            // Store remote user's audio level
-            audioLevelsRef.current.set(participantId, average)
-
-            // Update active speakers
-            if (average > 20) {
-              // Adjust threshold as needed
-              setActiveSpeakers((prev) => {
-                const updated = new Set(prev)
-                updated.add(participantId)
-                return updated
-              })
-            } else {
-              setActiveSpeakers((prev) => {
-                const updated = new Set(prev)
-                updated.delete(participantId)
-                return updated
-              })
-            }
-
-            // Continue monitoring if we're still connected
-            if (peerConnectionsRef.current.has(participantId)) {
-              requestAnimationFrame(checkRemoteAudioLevel)
-            }
+            const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+            audioLevelsRef.current.set(remoteUserId, avg)
+            setActiveSpeakers((prev) => {
+              const next = new Set(prev)
+              avg > 20 ? next.add(remoteUserId) : next.delete(remoteUserId)
+              return next
+            })
+            requestAnimationFrame(check)
           }
-
-          checkRemoteAudioLevel()
+          check()
         }
 
-        // Update the peer connection with the new audio stream
-        const updatedConnection = peerConnectionsRef.current.get(participantId)
-        if (updatedConnection) {
-          peerConnectionsRef.current.set(participantId, {
-            ...updatedConnection,
-            audioStream,
-            audioTrack: event.track,
-          })
-
-          setPeerConnections(new Map(peerConnectionsRef.current))
-        }
+        const existing = peerConnectionsRef.current.get(remoteUserId)
+        peerConnectionsRef.current.set(remoteUserId, {
+          ...existing!,
+          audioStream: stream,
+          audioTrack: e.track,
+        })
+        setPeerConnections(new Map(peerConnectionsRef.current))
       }
     }
 
-    return peerConnection
+    return pc
   }
 
-  // Initiate WebRTC connection with a participant
-  const initiateConnection = async (participantId: string): Promise<void> => {
+  const handleSignaling = () => {
+    socket.current?.on("signal", async ({ from, data }) => {
+      log(`[SIGNAL] from ${from}: ${data.type || "candidate"}`)
+      const pc =
+        peerConnectionsRef.current.get(from)?.connection || createPeerConnection(from)
+
+      if (!peerConnectionsRef.current.has(from)) {
+        peerConnectionsRef.current.set(from, { userId: from, connection: pc })
+        setPeerConnections(new Map(peerConnectionsRef.current))
+      }
+
+      if (data.type === "offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(data))
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        socket.current?.emit("signal", { to: from, from: user!.id, data: answer })
+      } else if (data.type === "answer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(data))
+      } else if (data.candidate) {
+        await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
+      }
+    })
+
+    socket.current?.on("user-joined", ({ userId, channelId }) => {
+      setVoiceChannelUsers((prev) => {
+        const updated = new Map(prev)
+        const users = updated.get(channelId) ?? new Set()
+        users.add(userId)
+        updated.set(channelId, users)
+        return updated
+      })
+    })
+    
+    socket.current?.on("user-left", ({ userId, channelId }) => {
+      setVoiceChannelUsers((prev) => {
+        const updated = new Map(prev)
+        const users = updated.get(channelId)
+        if (users) {
+          users.delete(userId)
+          if (users.size === 0) updated.delete(channelId)
+          else updated.set(channelId, users)
+        }
+        return updated
+      })
+    })
+
+    socket.current?.on("user-muted", ({ userId, isMuted }) => {
+      setMuteStatus((prev) => {
+        const updated = new Map(prev)
+        updated.set(userId, isMuted)
+        return updated
+      })
+    })
+  }
+
+  const initiateConnection = async (participantId: string) => {
     if (!user || !localStreamRef.current) return
-
-    // Create a new peer connection
-    const peerConnection = createPeerConnection(participantId)
-
-    // Store the connection
+    const pc = createPeerConnection(participantId)
     peerConnectionsRef.current.set(participantId, {
       userId: participantId,
-      connection: peerConnection,
+      connection: pc,
     })
-
     setPeerConnections(new Map(peerConnectionsRef.current))
 
-    try {
-      // Create an offer
-      const offer = await peerConnection.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: false,
-      })
+    const offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
 
-      // Set local description
-      await peerConnection.setLocalDescription(offer)
-
-      // In a real app, send this offer to the remote peer via signaling server
-      console.log("Created offer:", offer)
-
-      // Simulate receiving an answer from the remote peer
-      setTimeout(async () => {
-        // This simulates receiving the answer from the other peer
-        // In a real app, this would happen through your signaling server
-        const simulatedAnswer = {
-          type: "answer",
-          sdp: offer.sdp, // In a real app, this would be the actual answer from the remote peer
-        } as RTCSessionDescriptionInit
-
-        // Set remote description
-        if (peerConnection.signalingState !== "closed") {
-          await peerConnection.setRemoteDescription(simulatedAnswer)
-        }
-      }, 1000)
-    } catch (error) {
-      console.error(`Error initiating connection with ${participantId}:`, error)
-    }
-  }
-
-  // Join a voice channel
-  const joinVoiceChannel = async (channelId: string, participants: User[]): Promise<void> => {
-    if (!user) return
-
-    // Leave current channel if any
-    if (activeChannelRef.current) {
-      leaveVoiceChannel()
-    }
-
-    try {
-      // Get user media (microphone)
-      const stream = await getUserMedia()
-      setLocalStream(stream)
-      localStreamRef.current = stream
-      setIsMicrophoneActive(true)
-
-      // Set active channel
-      activeChannelRef.current = channelId
-
-      // Initiate connections with all participants except self
-      for (const participant of participants) {
-        if (participant.id !== user.id) {
-          await initiateConnection(participant.id)
-        }
-      }
-
-      console.log(`Joined voice channel ${channelId} with ${participants.length - 1} other participants`)
-    } catch (error) {
-      console.error("Error joining voice channel:", error)
-    }
-  }
-
-  // Leave the current voice channel
-  const leaveVoiceChannel = (): void => {
-    // Close all peer connections
-    peerConnectionsRef.current.forEach((peer) => {
-      peer.connection.close()
+    socket.current?.emit("signal", {
+      to: participantId,
+      from: user.id,
+      data: offer,
     })
+  }
 
-    // Clear peer connections
+  const joinVoiceChannel = async (channelId: string, participants: User[]) => {
+    if (!user) return
+    const stream = await getUserMedia()
+    setLocalStream(stream)
+    localStreamRef.current = stream
+    setIsMicrophoneActive(true)
+
+    socket.current = getSocket()
+    socket.current.emit("join", { channelId, userId: user.id })
+    handleSignaling()
+
+    for (const p of participants) {
+      if (p.id !== user.id) {
+        await initiateConnection(p.id)
+      }
+    }
+
+    setInterval(() => {
+      if (!socket.current || !user) return
+      const start = Date.now()
+      socket.current.emit("ping", () => {
+        const duration = Date.now() - start
+        setUserPings((prev) => new Map(prev).set(user.id, duration))
+      })
+    }, 1000)
+  }
+
+  const leaveVoiceChannel = () => {
+    peerConnectionsRef.current.forEach((p) => p.connection.close())
     peerConnectionsRef.current.clear()
     setPeerConnections(new Map())
 
-    // Stop local stream tracks
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop())
-    }
-
-    // Reset state
+    localStreamRef.current?.getTracks().forEach((t) => t.stop())
     setLocalStream(null)
     localStreamRef.current = null
     setIsMicrophoneActive(false)
     setIsSpeaking(false)
     setActiveSpeakers(new Set())
-    activeChannelRef.current = null
 
-    console.log("Left voice channel")
+    socket.current?.disconnect()
+    socket.current = null
   }
 
-  // Toggle microphone
-  const toggleMicrophone = (): void => {
+  const toggleMicrophone = () => {
     if (!localStreamRef.current) return
-
-    const audioTracks = localStreamRef.current.getAudioTracks()
-    if (audioTracks.length > 0) {
-      const enabled = !audioTracks[0].enabled
-      audioTracks[0].enabled = enabled
-      setIsMicrophoneActive(enabled)
-
-      // Update all peer connections
-      peerConnectionsRef.current.forEach((peer) => {
-        const senders = peer.connection.getSenders()
-        senders.forEach((sender) => {
-          if (sender.track && sender.track.kind === "audio") {
-            sender.track.enabled = enabled
-          }
-        })
-      })
-    }
+    const track = localStreamRef.current.getAudioTracks()[0]
+    track.enabled = !track.enabled
+    setIsMicrophoneActive(track.enabled)
   }
 
-  // Get audio level for a user
-  const getAudioLevel = (userId: string): number => {
-    return audioLevelsRef.current.get(userId) || 0
-  }
+  const getAudioLevel = (userId: string): number =>
+    audioLevelsRef.current.get(userId) || 0
 
-  // Context value
-  const contextValue: WebRTCContextType = {
+  const value: WebRTCContextType = {
     localStream,
     peerConnections,
     isMicrophoneActive,
     isSpeaking,
     activeSpeakers,
+    logs,
+    userPings,
     joinVoiceChannel,
     leaveVoiceChannel,
     toggleMicrophone,
     getAudioLevel,
+    muteStatus,
+    voiceChannelUsers, 
   }
 
-  return <WebRTCContext.Provider value={contextValue}>{children}</WebRTCContext.Provider>
+  return <WebRTCContext.Provider value={value}>{children}</WebRTCContext.Provider>
 }
-

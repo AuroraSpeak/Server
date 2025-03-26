@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import AuraLogo from "@/components/aura-logo"
+import { useCsrfToken } from "@/hooks/useCsrfToken"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -19,6 +20,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const { csrfToken, loading, csrfError} = useCsrfToken()
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -31,6 +33,7 @@ export default function LoginPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken || "",
         },
         body: JSON.stringify({ email, password }),
         credentials: "include",
@@ -81,6 +84,8 @@ export default function LoginPage() {
       setError("An unexpected error occurred. Please try again.")
       setIsLoading(false)
     }
+    if (loading) return <p>Loading CSRF token...</p>
+    if (csrfError) return <p>Error loading CSRF: {csrfError}</p>
   }
 
   return (
