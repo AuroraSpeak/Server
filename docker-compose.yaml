@@ -2,20 +2,22 @@ services:
   nextapp-dev:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
+      target: dev
     container_name: nextapp-dev
     command: pnpm dev
     ports:
       - "3000:3000"
     volumes:
-      - ./:/app:cached
-      - next-node-modules:/app/node_modules
+      - ./:/app
+      - /app/node_modules    # prevent host from overwriting container install
       - next-cache:/app/.next
     environment:
       NODE_ENV: development
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?connect_timeout=300
     depends_on:
       - postgres
+      - redis
     networks:
       - voice-net
 
@@ -127,7 +129,6 @@ networks:
     driver: bridge
 
 volumes:
-  next-node-modules:
   next-cache:
   postgres-data:
   pgadmin-data:

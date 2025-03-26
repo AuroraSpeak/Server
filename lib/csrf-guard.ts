@@ -1,11 +1,21 @@
-import { cookies, headers } from "next/headers";
-import { verifyCsrfToken } from "./csrf-wrapper";
+// lib/validateCsrfOrThrow.ts
+import { cookies, headers } from 'next/headers';
+import { verifyCsrfToken } from './csrf';
 
 export async function validateCsrfOrThrow() {
-  const csrfSecret = (await cookies()).get("csrfSecret")?.value;
-  const csrfToken = (await headers()).get("x-csrf-token");
+  const cookieStore = cookies();
+  const headerStore = headers();
 
-  if (!csrfSecret || !csrfToken || !verifyCsrfToken(csrfSecret, csrfToken)) {
-    throw new Error("Invalid CSRF token");
+  const secret = (await cookieStore).get('csrfSecret')?.value;
+  const token = (await headerStore).get('x-csrf-token');
+
+  if (!secret || !token) {
+    throw new Error('Missing CSRF token or secret');
+  }
+
+  const valid = verifyCsrfToken(secret, token);
+
+  if (!valid) {
+    throw new Error('Invalid CSRF token');
   }
 }

@@ -1,31 +1,49 @@
-FROM node:18-alpine AS builder
+# --- Base stage ---
+    FROM node:18-alpine AS base
 
-# Build Stage
-WORKDIR /app
-
-COPY package.json pnpm-lock.yaml ./
-
-RUN corepack enable && corepack prepare pnpm@8.6.12 --activate
-RUN pnpm install --frozen-lockfile
-
-COPY . .
-RUN pnpm build
-
-# Production Stage
-FROM node:18-alpine AS runner
-
-WORKDIR /app
-
-ENV NODE_ENV production
-
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-
-RUN corepack enable && corepack prepare pnpm@8.6.12 --activate
-RUN pnpm install --prod --frozen-lockfile
-
-EXPOSE 3000
-
-CMD ["pnpm", "start"]
+    WORKDIR /app
+    
+    # Enable pnpm
+    RUN corepack enable && corepack prepare pnpm@10.6.5 --activate
+    
+    # Install dependencies
+    COPY package.json pnpm-lock.yaml ./
+    RUN pnpm install --frozen-lockfile
+    
+    # Copy full app
+    COPY . .
+    
+    # Prisma (if used)
+    RUN pnpm prisma generate
+    
+    # Build Next.js (for production later)
+    RUN pnpm build
+    
+    
+    # --- Dev Stage ---
+    FROM base AS dev
+    
+    ENV NODE_ENV=development
+    ENV NEXT_TELEMETRY_DISABLED=1
+    ENV HOST=0.0.0.0
+    EXPOSE 3000
+    
+    CMD ["pnpm", "dev"]
+    
+    
+    # --- Prod Stage ---
+    FROM node:18-alpine AS prod
+    
+    WORKDIR /app
+    
+    RUN corepack enable && corepack prepare pnpm@10.6.5 --activate
+    
+    COPY --from=base /app .
+    
+    ENV NODE_ENV=production
+    ENV NEXT_TELEMETRY_DISABLED=1
+    ENV HOST=0.0.0.0
+    EXPOSE 3000
+    
+    CMD ["pnpm", "start"]
+    

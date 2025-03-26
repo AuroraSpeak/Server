@@ -71,7 +71,7 @@ type AppContextType = {
   showMembersSidebar: boolean
   getAudioLevel: (userId: string) => number
   currentUser: User | null;
-  createServer: (serverData: { name: string; icon: string; color?: string; type?: string }) => Promise<Server>
+  createServer: (serverData: { name: string; icon: string; color?: string; }) => Promise<Server>
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -306,24 +306,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }
 
   const currentUser: User = user as User;
-  const createServer = async (serverData: {
-    name: string
-    icon: string
-    color?: string
-    type?: string
-  }): Promise<Server> => {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
 
-    const newServer: Server = {
-      id: `server-${Date.now()}`,
-      name: serverData.name,
-      icon: serverData.icon,
-      color: serverData.color,
+  const createServer = async (
+    serverData: {
+      name: string
+      icon: string
+      color?: string
+      type?: string
+      
+    },
+    csrfToken: string
+  ): Promise<Server> => {
+  
+    const res = await fetch("/api/servers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrf-token": csrfToken || "",
+      },
+      body: JSON.stringify(serverData),
+      credentials: "include",
+    })
+  
+    if (!res.ok) {
+      const message = await res.text()
+      throw new Error(`Failed to create server: ${message}`)
     }
-
-    setServers((prev) => [...prev, newServer])
-    return newServer
-  }
+  
+    const createdServer: Server = await res.json()
+  
+    // Optionally: Update state
+    setServers((prev) => [...prev, createdServer])
+  
+    return createdServer
+  } 
  
   // Provide the context value
   const contextValue: AppContextType = {
