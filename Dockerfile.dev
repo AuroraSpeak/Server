@@ -1,0 +1,28 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Enable pnpm (modern way)
+RUN corepack enable && corepack prepare pnpm@10.6.5 --activate
+
+# Copy lockfile and package.json
+COPY package.json pnpm-lock.yaml ./
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy remaining files
+COPY . .
+
+# Run Prisma (if needed)
+RUN pnpm prisma generate
+
+# Expose the dev port
+EXPOSE 3000
+
+# Environment for dev
+ENV HOST 0.0.0.0
+ENV NEXT_TELEMETRY_DISABLED 1
+
+# Start Next.js dev server
+CMD ["pnpm", "dev"]

@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+      
+  # Beispiel für weitere Exporteure:
+  # - job_name: 'nextjs'
+  #   static_configs:
+  #     - targets: ['nextapp-dev:3000']
