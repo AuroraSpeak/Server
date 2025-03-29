@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import WebRTCStatus from "./webrtc-status"
+import { useCsrfToken } from "@/hooks/useCsrfToken"
 
 interface ChannelSidebarProps {
   activeServer: string
@@ -52,6 +53,9 @@ export default function AuraChannelSidebar({
     voice: true,
   })
 
+  const { createChannel } = useAppContext()
+  const { csrfToken } = useCsrfToken()      
+
   // State for add channel dialog
   const [showAddChannelDialog, setShowAddChannelDialog] = useState(false)
   const [newChannelName, setNewChannelName] = useState("")
@@ -72,11 +76,35 @@ export default function AuraChannelSidebar({
     setShowAddChannelDialog(true)
   }
 
-  const handleCreateChannel = () => {
-    alert(`Creating ${channelType} channel: ${newChannelName}`)
-    setShowAddChannelDialog(false)
-    setNewChannelName("")
-  }
+  const handleCreateChannel = async () => {
+    if (!newChannelName.trim()) {
+        alert("Please enter a channel name")
+        return
+      } 
+      
+
+      if (!csrfToken) {
+        alert("CSRF token is missing. Please try again.")
+        return
+      }
+
+      try {
+        await createChannel(
+          {
+            name: newChannelName,
+            type: channelType,
+          },
+          csrfToken
+        )
+      } catch (error) {
+        console.error("Failed to create channel:", error)
+        alert("An error occurred while creating the channel. Please try again.")
+      } finally {
+        setShowAddChannelDialog(false)
+        setNewChannelName("")
+        setChannelType("text")
+      }
+  } 
 
   const handleChannelClick = (channelId: string, channelType: string) => {
     setActiveChannel(channelId)
@@ -304,4 +332,3 @@ export default function AuraChannelSidebar({
     </div>
   )
 }
-

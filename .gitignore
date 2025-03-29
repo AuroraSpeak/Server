@@ -25,3 +25,5 @@ yarn-error.log*
 # OS-specific files for macOS
 .DS_Store
 Thumbs.db
+prisma/migrations/*
+

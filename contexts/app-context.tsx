@@ -71,7 +71,8 @@ type AppContextType = {
   showMembersSidebar: boolean
   getAudioLevel: (userId: string) => number
   currentUser: User | null;
-  createServer: (serverData: { name: string; icon: string; color?: string; }) => Promise<Server>
+  createServer: (serverData: { name: string; icon: string; color?: string; }, csrfToken: string) => Promise<Server>
+  createChannel: (channelData: { name: string; type: "text" | "voice"; userLimit?: number }, csrfToken: string) => Promise<Channel>
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -109,16 +110,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const fetchServers = async () => {
       try {
-        // In a real app, this would be an API call
-        
-        /*
-        TODO: Replace with real data
-        setServers(mockServers)
-
-        if (mockServers.length > 0 && !activeServer) {
-          setActiveServer(mockServers[0].id)
+        const serverRes = await fetch("/api/servers", {
+          credentials: "include",
+        })
+        if (!serverRes.ok) {
+          throw new Error("Failed to fetch servers");
         }
-          */
+
+        const data = await serverRes.json()
+        setServers(data.servers)
+
+        if(data.servers.length > 0 && !activeServer) {
+          setActiveServer(data.servers[0].id)
+        }
       } catch (error) {
         console.error("Error fetching servers:", error)
       }
@@ -136,7 +140,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       try {
         // Mock data - in a real app, this would be an API call
-        
+        const serverRes = await fetch(`/api/servers/${activeServer}/channels`, {
+          credentials: "include",
+        })
+        if (!serverRes.ok) {
+          throw new Error("Failed to fetch channels");
+        }
+        const data = await serverRes.json()
+        setActiveServer(data.servers[0].id)
         /*
         TODO: Replace with real data
         const serverChannels = mockChannels.filter((channel) => channel.serverId === activeServer)
@@ -340,6 +351,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   
     return createdServer
   } 
+
+  const createChannel = async (
+    channelData: { name: string; type: "text" | "voice"; userLimit?: number },
+    csrfToken: string
+  ): Promise<Channel> => {
+    if (!activeServer) {
+      throw new Error("No active server selected");
+    }
+  
+    const res = await fetch(`/api/servers/${activeServer}/channels`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-csrf-token": csrfToken || "",
+      },
+      body: JSON.stringify(channelData),
+      credentials: "include",
+    });
+  
+    if (!res.ok) {
+      const message = await res.text();
+      throw new Error(`Failed to create channel: ${message}`);
+    }
+  
+    const createdChannel: Channel = await res.json();
+  
+    // Optionally: Update state
+    setChannels((prev) => [...prev, createdChannel]);
+  
+    return createdChannel;
+  };
  
   // Provide the context value
   const contextValue: AppContextType = {
@@ -365,7 +407,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showMembersSidebar,
     getAudioLevel,
     currentUser,
-    createServer
+    createServer,
+    createChannel
   }
 
   return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>

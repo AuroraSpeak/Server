@@ -10,7 +10,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
   id            String   @id @default(uuid())
   email         String   @unique
@@ -23,7 +22,7 @@ model User {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   profile       Profile?
-  servers       Server[]        @relation("CreatedBy")
+  servers       Server[]          @relation("CreatedBy")
   messages      Message[]
   serverMembers ServerMember[]
   reactions     MessageReaction[]
@@ -34,16 +33,16 @@ model User {
 }
 
 model Profile {
-  id        String   @id
-  fullName  String   @map("full_name")
-  email     String
-  avatarUrl String?  @map("avatar_url")
-  status    String   @default("offline") // online, idle, dnd, offline
-  gameActivity String? @map("game_activity")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String   @id
+  fullName     String   @map("full_name")
+  email        String
+  avatarUrl    String?  @map("avatar_url")
+  status       String   @default("offline") // online, idle, dnd, offline
+  gameActivity String?  @map("game_activity")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
-  user      User     @relation(fields: [id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [id], references: [id], onDelete: Cascade)
 
   @@map("profiles")
 }
@@ -58,10 +57,12 @@ model Server {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  creator     User?    @relation("CreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  categories  Category[]
-  members     ServerMember[]
-  roles       Role[]
+  creator    User?          @relation("CreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  categories Category[]
+  members    ServerMember[]
+  roles      Role[]
+
+  channels Channel[]
 
   @@map("servers")
 }
@@ -74,47 +75,50 @@ model Category {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  channels  Channel[]
+  server   Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  channels Channel[]
 
   @@map("categories")
 }
 
 model Channel {
-  id          String   @id @default(uuid())
-  categoryId  String   @map("category_id")
-  name        String
-  type        String   // text, voice
-  userLimit   Int?     @map("user_limit") // For voice channels
-  bitrate     Int?     // For voice channels
-  position    Int      @default(0)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid())
+  categoryId String   @map("category_id")
+  name       String
+  type       String // text, voice
+  userLimit  Int?     @map("user_limit") // For voice channels
+  bitrate    Int? // For voice channels
+  position   Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category    Category     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   messages    Message[]
   voiceStates VoiceState[]
+
+  serverId String @map("server_id")
+  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
 
   @@map("channels")
 }
 
 model Message {
-  id            String    @id @default(uuid())
-  channelId     String    @map("channel_id")
-  userId        String?   @map("user_id")
-  content       String
-  isPinned      Boolean   @default(false) @map("is_pinned")
-  isThread      Boolean   @default(false) @map("is_thread")
+  id             String   @id @default(uuid())
+  channelId      String   @map("channel_id")
+  userId         String?  @map("user_id")
+  content        String
+  isPinned       Boolean  @default(false) @map("is_pinned")
+  isThread       Boolean  @default(false) @map("is_thread")
   threadParentId String?  @map("thread_parent_id")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  channel       Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  parentMessage Message?  @relation("ThreadMessages", fields: [threadParentId], references: [id], onDelete: Cascade)
-  threadMessages Message[] @relation("ThreadMessages")
-  files         MessageFile[]
-  reactions     MessageReaction[]
+  channel        Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  parentMessage  Message?          @relation("ThreadMessages", fields: [threadParentId], references: [id], onDelete: Cascade)
+  threadMessages Message[]         @relation("ThreadMessages")
+  files          MessageFile[]
+  reactions      MessageReaction[]
 
   @@map("messages")
 }
@@ -128,7 +132,7 @@ model MessageFile {
   url       String
   createdAt DateTime @default(now()) @map("created_at")
 
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@map("message_files")
 }
@@ -140,25 +144,25 @@ model MessageReaction {
   emoji     String
   createdAt DateTime @default(now()) @map("created_at")
 
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId, emoji])
   @@map("message_reactions")
 }
 
 model ServerMember {
-  id        String   @id @default(uuid())
-  serverId  String   @map("server_id")
-  userId    String   @map("user_id")
-  nickname  String?
+  id         String   @id @default(uuid())
+  serverId   String   @map("server_id")
+  userId     String   @map("user_id")
+  nickname   String?
   // Changed from String[] to a single role string - we'll handle multiple roles in the application
-  roleString String? @map("role_string") // Comma-separated roles
-  joinedAt  DateTime @default(now()) @map("joined_at")
-  isBoosting Boolean @default(false) @map("is_boosting")
+  roleString String?  @map("role_string") // Comma-separated roles
+  joinedAt   DateTime @default(now()) @map("joined_at")
+  isBoosting Boolean  @default(false) @map("is_boosting")
 
-  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([serverId, userId])
   @@map("server_members")
@@ -175,25 +179,25 @@ model VoiceState {
   streaming Boolean  @default(false)
   joinedAt  DateTime @default(now()) @map("joined_at")
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
   @@unique([userId, channelId])
   @@map("voice_states")
 }
 
 model Role {
-  id        String   @id @default(uuid())
-  serverId  String   @map("server_id")
-  name      String
-  color     String
-  position  Int      @default(0)
+  id               String   @id @default(uuid())
+  serverId         String   @map("server_id")
+  name             String
+  color            String
+  position         Int      @default(0)
   // Changed from String[] to a single permissions string
-  permissionString String? @map("permission_string") // Comma-separated permissions
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  permissionString String?  @map("permission_string") // Comma-separated permissions
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  server    Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
   userRoles UserRole[]
 
   @@map("roles")
@@ -206,10 +210,9 @@ model UserRole {
   roleId    String   @map("role_id")
   createdAt DateTime @default(now()) @map("created_at")
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
   @@map("user_roles")
 }
-
