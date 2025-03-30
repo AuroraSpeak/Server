@@ -40,11 +40,23 @@ export async function generateToken(userId: string): Promise<string> {
 // Verify JWT token - Edge Runtime compatible
 export async function verifyToken(token: string): Promise<{ sub: string } | null> {
   try {
+    if (!token) {
+      console.error('No token provided')
+      return null
+    }
+
     const { payload } = await jwtVerify(token, secret)
-    if (!payload.sub) return null
+    if (!payload.sub) {
+      console.error('Token payload missing sub claim')
+      return null
+    }
     return { sub: payload.sub as string }
   } catch (error) {
-    console.error('Token verification failed:', error)
+    if (error instanceof Error) {
+      console.error('Token verification failed:', error.message)
+    } else {
+      console.error('Token verification failed with unknown error')
+    }
     return null
   }
 }
