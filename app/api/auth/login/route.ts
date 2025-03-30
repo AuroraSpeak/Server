@@ -2,9 +2,12 @@ import { type NextRequest, NextResponse } from "next/server"
 import { comparePasswords, generateToken, setSessionCookie } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { validateCsrfOrThrow } from "@/lib/csrf-guard"
+import logger from "@/lib/logging"
 
 export async function POST(request: NextRequest) {
   try {
+    const ip = request.headers.get('x-forwarded-for') || 'unknown';
+    logger.info('Login attempt started', { ip });
     
     validateCsrfOrThrow()
 
@@ -12,16 +15,19 @@ export async function POST(request: NextRequest) {
 
     // Validate input
     if (!email || !password) {
+      logger.warn('Login attempt failed - missing credentials', { email: email ? 'provided' : 'missing' });
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 })
     }
 
     const user = await prisma.user.findUnique({ where: { email } })
     if (!user) {
+      logger.warn('Login attempt failed - user not found', { email });
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
     }
 
     const isPasswordValid = await comparePasswords(password, user.password)
     if (!isPasswordValid) {
+      logger.warn('Login attempt failed - invalid password', { email });
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
     }
 
@@ -32,6 +38,8 @@ export async function POST(request: NextRequest) {
 
     const token = generateToken(user.id)
     await setSessionCookie(token)
+
+    logger.info('Login successful', { userId: user.id, email });
 
     const response = NextResponse.json({
       success: true,
@@ -55,7 +63,12 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error: any) {
-    console.error("Login error:", error)
+    const ip = request.headers.get('x-forwarded-for') || 'unknown';
+    logger.error('Login error occurred', { 
+      error: error.message,
+      stack: error.stack,
+      ip
+    });
 
     if (error.message === "Invalid CSRF token") {
       return NextResponse.json({ error: "Invalid CSRF token" }, { status: 403 })

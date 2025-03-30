@@ -4,11 +4,19 @@ import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import logger from "@/lib/logging";
 
 export default function GlobalError({ error }: { error: Error }) {
   const router = useRouter();
 
   useEffect(() => {
+    logger.error('Global error occurred', {
+      error: error.message,
+      stack: error.stack,
+      url: window.location.href,
+      userAgent: window.navigator.userAgent
+    });
+    
     Sentry.captureException(error);
   }, [error]);
 
@@ -25,13 +33,19 @@ export default function GlobalError({ error }: { error: Error }) {
           
           <div className="space-y-4">
             <Button
-              onClick={() => router.refresh()}
+              onClick={() => {
+                logger.info('User attempting to refresh page after error');
+                router.refresh();
+              }}
               className="w-full bg-aura-primary hover:bg-aura-primary/90"
             >
               Seite neu laden
             </Button>
             <Button
-              onClick={() => router.push("/")}
+              onClick={() => {
+                logger.info('User navigating to home page after error');
+                router.push("/");
+              }}
               variant="outline"
               className="w-full border-aura-muted text-white hover:bg-aura-muted"
             >

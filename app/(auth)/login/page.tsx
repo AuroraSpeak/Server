@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import AuraLogo from "@/components/aura-logo"
 import { useCsrfToken } from "@/hooks/useCsrfToken"
+import logger from "@/lib/logging"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -29,6 +30,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
+      logger.info('Client-side login attempt started', { email });
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -42,15 +44,24 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        logger.warn('Client-side login attempt failed', { 
+          status: response.status,
+          error: data.error 
+        });
         setError(data.error || "Failed to log in")
         setIsLoading(false)
         return
       }
 
+      logger.info('Client-side login successful', { email });
       router.push("/")
       router.refresh()
     } catch (err) {
-      console.error("Login error:", err)
+      logger.error('Client-side login error', { 
+        error: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined,
+        email
+      });
       setError("An unexpected error occurred. Please try again.")
       setIsLoading(false)
     }

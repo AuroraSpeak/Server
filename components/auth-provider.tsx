@@ -5,6 +5,7 @@ import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useCsrfToken } from "@/hooks/useCsrfToken"
+import logger from "@/lib/logging"
 
 type User = {
   id: string
@@ -37,6 +38,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const getUser = async () => {
       try {
+        logger.debug('Fetching user session');
         const response = await fetch("/api/auth/me", {
           credentials: "include", // Important to include credentials
         })
@@ -44,11 +46,19 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         if (response.ok) {
           const data = await response.json()
           setUser(data.user)
+          logger.info('User session retrieved successfully', { 
+            userId: data.user.id,
+            email: data.user.email 
+          });
         } else {
           setUser(null)
+          logger.warn('No valid user session found');
         }
       } catch (error) {
-        console.error("Error fetching user:", error)
+        logger.error('Error fetching user session', { 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        });
         setUser(null)
       } finally {
         setIsLoading(false)
@@ -60,6 +70,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   const logout = async () => {
     try {
+      logger.info('Initiating logout process');
       const response = await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
@@ -69,7 +80,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       })
 
       if (!response.ok) {
-        console.error("Logout failed:", await response.text())
+        const errorText = await response.text();
+        logger.error('Logout request failed', { 
+          status: response.status,
+          error: errorText
+        });
+      } else {
+        logger.info('Logout request successful');
       }
 
       // Clear user state regardless of response
@@ -77,8 +94,12 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
       // Force redirect to login page
       router.push("/login")
+      logger.info('User redirected to login page');
     } catch (error) {
-      console.error("Error logging out:", error)
+      logger.error('Error during logout process', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
       // Still clear user state and redirect even if there's an error
       setUser(null)
       router.push("/login")

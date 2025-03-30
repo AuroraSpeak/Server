@@ -22,6 +22,44 @@ const nextConfig = {
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
+  webpack: (config, { isServer }) => {
+    // Behandle native Module
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+      crypto: false,
+      stream: false,
+      path: false,
+      zlib: false,
+      http: false,
+      https: false,
+      os: false,
+      url: false,
+      assert: false,
+      constants: false,
+      buffer: false,
+      process: false,
+      util: false,
+    };
+
+    // Behandle .node Dateien nur serverseitig
+    if (isServer) {
+      config.module.rules.push({
+        test: /\.node$/,
+        use: 'node-loader',
+      });
+    } else {
+      // Im Browser: Ignoriere .node Dateien
+      config.module.rules.push({
+        test: /\.node$/,
+        use: 'null-loader',
+      });
+    }
+
+    return config;
+  },
 };
 
 mergeConfig(nextConfig, userConfig.default || userConfig);

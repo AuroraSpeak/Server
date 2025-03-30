@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { useParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
+import { UserPlus } from "lucide-react"
 
 export function InviteButton() {
   const [open, setOpen] = useState(false)
@@ -60,37 +61,25 @@ export function InviteButton() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="mr-2"
-          >
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <line x1="19" y1="8" x2="19" y2="14" />
-            <line x1="16" y1="11" x2="22" y2="11" />
-          </svg>
+        <Button 
+          variant="outline" 
+          size="sm"
+          className="text-[hsl(var(--aura-success))] border-[hsla(var(--aura-success),0.3)] hover:bg-[hsla(var(--aura-success),0.1)]"
+        >
+          <UserPlus size={14} className="mr-1" />
           Einladen
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] bg-[hsl(var(--aura-channels))] border-[hsla(var(--aura-primary),0.2)]">
         <DialogHeader>
-          <DialogTitle>Neue Einladung erstellen</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-[hsl(var(--aura-text-normal))]">Neue Einladung erstellen</DialogTitle>
+          <DialogDescription className="text-[hsl(var(--aura-text-muted))]">
             Geben Sie die E-Mail-Adresse der Person ein, die Sie einladen möchten.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="email" className="text-right">
+            <Label htmlFor="email" className="text-right text-[hsl(var(--aura-text-normal))]">
               E-Mail
             </Label>
             <Input
@@ -98,7 +87,7 @@ export function InviteButton() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="col-span-3"
+              className="col-span-3 bg-[hsl(var(--aura-bg))] border-[hsla(var(--aura-primary),0.2)] text-[hsl(var(--aura-text-normal))]"
               placeholder="max.mustermann@example.com"
             />
           </div>
@@ -107,6 +96,7 @@ export function InviteButton() {
           <Button
             onClick={handleInvite}
             disabled={!email || isLoading}
+            className="bg-[hsl(var(--aura-primary))] hover:bg-[hsla(var(--aura-primary),0.9)]"
           >
             {isLoading ? "Wird gesendet..." : "Einladung senden"}
           </Button>
