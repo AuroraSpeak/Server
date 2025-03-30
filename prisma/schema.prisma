@@ -28,6 +28,7 @@ model User {
   reactions     MessageReaction[]
   voiceStates   VoiceState[]
   userRoles     UserRole[]
+  invitations   Invitation[]
 
   @@map("users")
 }
@@ -63,6 +64,7 @@ model Server {
   roles      Role[]
 
   channels Channel[]
+  invitations Invitation[]
 
   @@map("servers")
 }
@@ -215,4 +217,22 @@ model UserRole {
 
   @@unique([userId, roleId])
   @@map("user_roles")
+}
+
+model Invitation {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  status    String   @default("pending") // pending, accepted, expired
+  invitedBy User     @relation(fields: [invitedById], references: [id])
+  invitedById String
+  server    Server   @relation(fields: [serverId], references: [id])
+  serverId  String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([email])
+  @@index([token])
+  @@index([invitedById])
+  @@index([serverId])
 }

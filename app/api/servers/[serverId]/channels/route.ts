@@ -39,7 +39,18 @@ export async function POST(req: NextRequest, { params }: { params: { serverId: s
       orderBy: { position: "asc" },
     })
 
-    const defaultCategoryId = lastCategory?.id
+    let categoryId = lastCategory?.id
+
+    if (!categoryId) {
+      const defaultCategory = await prisma.category.create({
+        data: {
+          name: "Allgemein",
+          position: 0,
+          serverId: params.serverId,
+        },
+      })
+      categoryId = defaultCategory.id
+    }
 
     const channel = await prisma.channel.create({
       data: {
@@ -48,7 +59,7 @@ export async function POST(req: NextRequest, { params }: { params: { serverId: s
         userLimit,
         position: 0,
         serverId: params.serverId,
-        categoryId: defaultCategoryId,
+        categoryId,
       },
     })
 
@@ -57,4 +68,27 @@ export async function POST(req: NextRequest, { params }: { params: { serverId: s
     console.error("[CHANNEL_CREATE_ERROR]", err)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: { serverId: string } }
+) {
+  const user = await getCurrentUser()
+  
+  if (!user) {
+    return new NextResponse("Unauthorized", { status: 401 })
+  }
+
+  // TODO: Implementiere die Logik zum Abrufen der Server-Kanäle
+  const channels = [
+    {
+      id: "general",
+      name: "Allgemein",
+      type: "text" as const,
+      serverId: params.serverId
+    }
+  ]
+
+  return NextResponse.json({ channels })
 }

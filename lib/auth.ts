@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import { prisma } from "@/lib/prisma"
+import { verify } from 'jsonwebtoken'
 
 // JWT secret key - in production, use environment variables
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
@@ -102,5 +103,56 @@ export async function requireAuth() {
   }
 
   return user
+}
+
+export interface Session {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+  } | null;
+}
+
+export async function getSession(): Promise<Session> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+    if (!token) {
+      return { user: null };
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      await deleteSessionCookie();
+      return { user: null };
+    }
+
+    // Hole den Benutzer aus der Datenbank
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+      },
+    });
+
+    if (!user) {
+      await deleteSessionCookie();
+      return { user: null };
+    }
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.fullName,
+      },
+    };
+  } catch (error) {
+    console.error('Session error:', error);
+    return { user: null };
+  }
 }
 

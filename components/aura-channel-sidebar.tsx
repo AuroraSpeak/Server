@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, ChevronRight, Hash, Volume2, Settings, Plus, Headphones, Mic, LogOut } from "lucide-react"
+import { ChevronDown, ChevronRight, Hash, Volume2, Settings, Plus, Headphones, Mic, LogOut, Bug } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import WebRTCStatus from "./webrtc-status"
 import { useCsrfToken } from "@/hooks/useCsrfToken"
+import * as Sentry from "@sentry/nextjs"
 
 interface ChannelSidebarProps {
   activeServer: string
@@ -114,6 +115,15 @@ export default function AuraChannelSidebar({
       joinVoiceChannel(channelId)
     }
   }
+
+  const testSentry = () => {
+    try {
+      throw new Error("Test-Fehler aus der Sidebar");
+    } catch (error) {
+      Sentry.captureException(error);
+      Sentry.captureMessage("Test-Nachricht aus der Sidebar", "info");
+    }
+  };
 
   return (
     <div className="aura-channels flex flex-col h-full bg-aura-channels">
@@ -236,6 +246,14 @@ export default function AuraChannelSidebar({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-aura-interactive hover:text-aura-interactive-hover hover:bg-aura-muted rounded-md"
+              onClick={testSentry}
+            >
+              <Bug size={18} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-aura-interactive hover:text-aura-interactive-hover hover:bg-aura-muted rounded-md"
             >
               <Mic size={18} />
             </Button>
@@ -256,11 +274,8 @@ export default function AuraChannelSidebar({
                   <Settings size={18} />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 bg-aura-bg border-aura-muted">
-                <DropdownMenuItem
-                  onClick={handleLogout}
-                  className="text-aura-danger cursor-pointer focus:bg-aura-danger/10 focus:text-aura-danger"
-                >
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Logout</span>
                 </DropdownMenuItem>

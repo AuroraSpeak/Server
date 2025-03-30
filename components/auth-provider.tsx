@@ -11,6 +11,7 @@ type User = {
   email: string
   fullName: string
   avatarUrl?: string
+  homeServerId?: string
 }
 
 type AuthContextType = {

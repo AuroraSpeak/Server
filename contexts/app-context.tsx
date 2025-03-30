@@ -139,7 +139,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!activeServer) return
 
       try {
-        // Mock data - in a real app, this would be an API call
         const serverRes = await fetch(`/api/servers/${activeServer}/channels`, {
           credentials: "include",
         })
@@ -147,23 +146,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           throw new Error("Failed to fetch channels");
         }
         const data = await serverRes.json()
-        setActiveServer(data.servers[0].id)
-        /*
-        TODO: Replace with real data
-        const serverChannels = mockChannels.filter((channel) => channel.serverId === activeServer)
-        setChannels(serverChannels)
+        setChannels(data.channels)
 
-        if (serverChannels.length > 0 && (!activeChannel || !serverChannels.find((c) => c.id === activeChannel))) {
-          setActiveChannel(serverChannels[0].id)
+        if (data.channels.length > 0 && (!activeChannel || !data.channels.find((c: Channel) => c.id === activeChannel))) {
+          setActiveChannel(data.channels[0].id)
         }
-          */
       } catch (error) {
         console.error("Error fetching channels:", error)
+        // Setze leere Kanäle bei Fehler
+        setChannels([])
       }
     }
 
     fetchChannels()
-  }, [activeServer, activeChannel]) 
+  }, [activeServer, activeChannel])
 
   // Fetch messages when active channel changes
   useEffect(() => {
@@ -192,12 +188,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!activeServer) return
 
       try {
-        // Mock data - in a real app, this would be an API call
-        
-
-        setMembers(mockMembers)
+        const memberRes = await fetch(`/api/servers/${activeServer}/members`, {
+          credentials: "include",
+        })
+        if (!memberRes.ok) {
+          throw new Error("Failed to fetch members");
+        }
+        const data = await memberRes.json()
+        // Konvertiere die Mitglieder in den korrekten Typ
+        const typedMembers: User[] = data.members.map((member: any) => ({
+          ...member,
+          status: member.status as "online" | "idle" | "dnd" | "offline"
+        }))
+        setMembers(typedMembers)
       } catch (error) {
         console.error("Error fetching members:", error)
+        setMembers([])
       }
     }
 
