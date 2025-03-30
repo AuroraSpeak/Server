@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import AuthProvider from "@/components/auth-provider"
@@ -13,6 +13,13 @@ const inter = Inter({
   display: 'swap',
   variable: '--font-inter',
 })
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+}
 
 export const metadata: Metadata = {
   title: {
@@ -49,17 +56,6 @@ export const metadata: Metadata = {
     description: 'Eine moderne Kommunikationsplattform für Gaming und Community',
     creator: '@auraspeak',
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-  },
-  icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon-16x16.png',
-    apple: '/apple-touch-icon.png',
-  },
-  manifest: '/site.webmanifest',
 }
 
 export default function RootLayout({
@@ -69,7 +65,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="de" className={`${inter.variable} dark`} suppressHydrationWarning>
-      <body className={`${inter.className} h-full bg-[hsl(var(--aura-bg))] antialiased`}>
+      <body className="h-full bg-aura-bg antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"

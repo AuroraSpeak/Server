@@ -181,6 +181,7 @@ body {
   font-size: 18px;
   font-weight: 700;
   border: 2px solid transparent;
+  position: relative;
 }
 
 .aura-server:hover {
@@ -212,6 +213,9 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.02em;
   padding: 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
 }
 
 .aura-channel {

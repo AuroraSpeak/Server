@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,23 +15,23 @@ interface CreateServerDialogProps {
 }
 
 const colorOptions = [
-  { value: "purple", label: "Purple", class: "bg-[hsl(264,73%,65%)]" },
-  { value: "blue", label: "Blue", class: "bg-[hsl(210,100%,60%)]" },
-  { value: "green", label: "Green", class: "bg-[hsl(150,70%,55%)]" },
-  { value: "orange", label: "Orange", class: "bg-[hsl(30,100%,60%)]" },
-  { value: "pink", label: "Pink", class: "bg-[hsl(330,85%,65%)]" },
+  { value: "#8B5CF6", label: "Purple", class: "bg-[#8B5CF6]" },
+  { value: "#3B82F6", label: "Blue", class: "bg-[#3B82F6]" },
+  { value: "#10B981", label: "Green", class: "bg-[#10B981]" },
+  { value: "#F59E0B", label: "Orange", class: "bg-[#F59E0B]" },
+  { value: "#EC4899", label: "Pink", class: "bg-[#EC4899]" },
 ]
 
 export default function CreateServerDialog({ isOpen, onClose }: CreateServerDialogProps) {
   const [serverName, setServerName] = useState("")
-  const [iconColor, setIconColor] = useState("purple")
+  const [iconColor, setIconColor] = useState("#8B5CF6")
   const [isCreating, setIsCreating] = useState(false)
 
   const { createServer } = useAppContext()
-  const{ csrfToken } = useCsrfToken()
+  const { csrfToken } = useCsrfToken()
 
   const handleCreate = async () => {
-    if (!serverName.trim()) return
+    if (!serverName.trim() || !csrfToken) return
     setIsCreating(true)
 
     try {
@@ -39,8 +39,7 @@ export default function CreateServerDialog({ isOpen, onClose }: CreateServerDial
         name: serverName,
         icon: serverName.charAt(0).toUpperCase(),
         color: iconColor,
-        csrfToken: csrfToken,
-      })
+      }, csrfToken)
 
       onClose()
       resetForm()
@@ -53,7 +52,7 @@ export default function CreateServerDialog({ isOpen, onClose }: CreateServerDial
 
   const resetForm = () => {
     setServerName("")
-    setIconColor("purple")
+    setIconColor("#8B5CF6")
   }
 
   const handleClose = () => {
@@ -66,6 +65,9 @@ export default function CreateServerDialog({ isOpen, onClose }: CreateServerDial
       <DialogContent className="sm:max-w-[425px] bg-[hsl(var(--aura-channels))] border-[hsla(var(--aura-primary),0.2)]">
         <DialogHeader>
           <DialogTitle className="text-center text-xl">Create a Server</DialogTitle>
+          <DialogDescription className="text-center text-[hsl(var(--aura-text-muted))]">
+            Give your server a name and choose an icon color.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">

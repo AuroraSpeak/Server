@@ -118,16 +118,16 @@ export default function AuraChat({
         <div className="ml-auto flex items-center space-x-3">
           {!isVoiceChannel && (
             <>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--aura-interactive))]">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-aura-interactive">
                 <Bell size={18} />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--aura-interactive))]">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-aura-interactive">
                 <Pin size={18} />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-[hsl(var(--aura-interactive))]"
+                className="h-8 w-8 text-aura-interactive"
                 onClick={toggleMembersSidebar}
               >
                 <Users size={18} />
@@ -138,7 +138,7 @@ export default function AuraChat({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-[hsl(var(--aura-success))] border-[hsla(var(--aura-success),0.3)] hover:bg-[hsla(var(--aura-success),0.1)]"
+                      className="text-aura-success border-aura-success/30 hover:bg-aura-success/10"
                       onClick={handleJoinVoiceChannel}
                     >
                       <Phone size={14} className="mr-1" />
@@ -156,7 +156,7 @@ export default function AuraChat({
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-[hsl(var(--aura-text-muted))]" />
             <Input
               placeholder="Search"
-              className="h-8 w-36 pl-8 bg-[hsl(var(--aura-channels))] border-[hsla(var(--aura-primary),0.1)] text-sm py-1"
+              className="h-8 w-36 pl-8 bg-aura-channels border-aura-primary/10 text-sm py-1"
             />
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-[hsl(var(--aura-interactive))]">
@@ -333,13 +333,13 @@ export default function AuraChat({
 
       {/* Message input */}
       {!isVoiceChannel && (
-        <div className="p-4 border-t border-[hsla(var(--aura-primary),0.1)] bg-[hsla(var(--aura-bg),0.7)] backdrop-blur-sm">
+        <div className="p-4 border-t border-aura-primary/10 bg-aura-bg/70 backdrop-blur-sm">
           <div className="message-input-container p-0">
             <div className="relative">
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute left-2 top-1/2 -translate-y-1/2 text-[hsl(var(--aura-interactive))] hover:text-[hsl(var(--aura-interactive-hover))] hover:bg-transparent"
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-aura-interactive hover:text-aura-interactive-hover hover:bg-transparent"
               >
                 <PlusCircle size={20} />
               </Button>
@@ -348,7 +348,7 @@ export default function AuraChat({
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="pl-10 pr-24 py-3 bg-[hsla(var(--aura-channels),0.8)] border-[hsla(var(--aura-primary),0.2)] focus-visible:ring-[hsla(var(--aura-primary),0.4)] focus-visible:border-[hsl(var(--aura-primary))]"
+                className="pl-10 pr-24 py-3 bg-aura-channels/80 border-aura-primary/20 focus-visible:ring-aura-primary/40 focus-visible:border-aura-primary"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center space-x-1">
                 <Button

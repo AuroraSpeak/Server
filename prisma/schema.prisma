@@ -3,11 +3,13 @@
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas   = ["voice"]
 }
 
 model User {
@@ -30,6 +32,7 @@ model User {
   userRoles     UserRole[]
   invitations   Invitation[]
 
+  @@schema("voice")
   @@map("users")
 }
 
@@ -45,6 +48,7 @@ model Profile {
 
   user User @relation(fields: [id], references: [id], onDelete: Cascade)
 
+  @@schema("voice")
   @@map("profiles")
 }
 
@@ -66,6 +70,7 @@ model Server {
   channels Channel[]
   invitations Invitation[]
 
+  @@schema("voice")
   @@map("servers")
 }
 
@@ -80,6 +85,7 @@ model Category {
   server   Server    @relation(fields: [serverId], references: [id], onDelete: Cascade)
   channels Channel[]
 
+  @@schema("voice")
   @@map("categories")
 }
 
@@ -98,9 +104,10 @@ model Channel {
   messages    Message[]
   voiceStates VoiceState[]
 
-  serverId String @map("server_id")
-  server   Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId String? @map("server_id")
+  server   Server? @relation(fields: [serverId], references: [id], onDelete: Cascade)
 
+  @@schema("voice")
   @@map("channels")
 }
 
@@ -122,6 +129,7 @@ model Message {
   files          MessageFile[]
   reactions      MessageReaction[]
 
+  @@schema("voice")
   @@map("messages")
 }
 
@@ -136,6 +144,7 @@ model MessageFile {
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
+  @@schema("voice")
   @@map("message_files")
 }
 
@@ -149,6 +158,7 @@ model MessageReaction {
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@schema("voice")
   @@unique([messageId, userId, emoji])
   @@map("message_reactions")
 }
@@ -166,6 +176,7 @@ model ServerMember {
   server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@schema("voice")
   @@unique([serverId, userId])
   @@map("server_members")
 }
@@ -184,6 +195,7 @@ model VoiceState {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
 
+  @@schema("voice")
   @@unique([userId, channelId])
   @@map("voice_states")
 }
@@ -202,6 +214,7 @@ model Role {
   server    Server     @relation(fields: [serverId], references: [id], onDelete: Cascade)
   userRoles UserRole[]
 
+  @@schema("voice")
   @@map("roles")
 }
 
@@ -215,6 +228,7 @@ model UserRole {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
+  @@schema("voice")
   @@unique([userId, roleId])
   @@map("user_roles")
 }
@@ -231,6 +245,7 @@ model Invitation {
   createdAt DateTime @default(now())
   expiresAt DateTime
 
+  @@schema("voice")
   @@index([email])
   @@index([token])
   @@index([invitedById])

@@ -58,6 +58,33 @@ const nextConfig = {
       });
     }
 
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        crypto: false,
+        os: false,
+        path: false,
+        stream: false,
+        zlib: false,
+        snappy: false,
+      };
+
+      // Ignoriere Server-seitige Module im Browser
+      config.module.rules.push({
+        test: /server-logging\.ts$/,
+        loader: 'null-loader',
+      });
+
+      // Ignoriere snappy-Modul im Browser
+      config.module.rules.push({
+        test: /snappy/,
+        loader: 'null-loader',
+      });
+    }
+
     return config;
   },
 };

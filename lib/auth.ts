@@ -1,13 +1,17 @@
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import bcrypt from "bcryptjs"
-import jwt from "jsonwebtoken"
 import { prisma } from "@/lib/prisma"
-import { verify } from 'jsonwebtoken'
+import { SignJWT, jwtVerify } from 'jose'
 
 // JWT secret key - in production, use environment variables
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key"
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is not set')
+}
+
 const JWT_EXPIRES_IN = "7d"
+const secret = new TextEncoder().encode(JWT_SECRET)
 
 // Session cookie name
 export const SESSION_COOKIE_NAME = "wavelength_session"
@@ -22,16 +26,25 @@ export async function comparePasswords(password: string, hashedPassword: string)
   return await bcrypt.compare(password, hashedPassword)
 }
 
-// Generate JWT token
-export function generateToken(userId: string): string {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+// Generate JWT token - Edge Runtime compatible
+export async function generateToken(userId: string): Promise<string> {
+  const token = await new SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('7d')
+    .sign(secret)
+  
+  return token
 }
 
-// Verify JWT token
-export function verifyToken(token: string): { sub: string } | null {
+// Verify JWT token - Edge Runtime compatible
+export async function verifyToken(token: string): Promise<{ sub: string } | null> {
   try {
-    return jwt.verify(token, JWT_SECRET) as { sub: string }
+    const { payload } = await jwtVerify(token, secret)
+    if (!payload.sub) return null
+    return { sub: payload.sub as string }
   } catch (error) {
+    console.error('Token verification failed:', error)
     return null
   }
 }
@@ -46,7 +59,8 @@ export async function setSessionCookie(token: string) {
     path: "/",
     secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 7, // 7 days
-    sameSite: "lax",
+    sameSite: "strict",
+    domain: process.env.NODE_ENV === "production" ? process.env.COOKIE_DOMAIN : undefined,
   })
 }
 
@@ -65,7 +79,7 @@ export async function getCurrentUser() {
     return null
   }
 
-  const payload = verifyToken(token)
+  const payload = await verifyToken(token)
   if (!payload) {
     deleteSessionCookie()
     return null
@@ -122,7 +136,7 @@ export async function getSession(): Promise<Session> {
       return { user: null };
     }
 
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     if (!payload) {
       await deleteSessionCookie();
       return { user: null };

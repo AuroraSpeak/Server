@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,8 +21,11 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const { csrfToken, loading, csrfError} = useCsrfToken()
+  const { csrfToken, loading, csrfError } = useCsrfToken()
   const router = useRouter()
+
+  const searchParams = useSearchParams()
+  const returnUrl = searchParams.get("returnUrl")
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,7 +33,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      logger.info('Client-side login attempt started', { email });
+      logger.info("Client-side login attempt started", { email })
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -44,24 +47,31 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        logger.warn('Client-side login attempt failed', { 
+        logger.warn("Client-side login attempt failed", {
           status: response.status,
-          error: data.error 
-        });
+          error: data.error,
+        })
         setError(data.error || "Failed to log in")
         setIsLoading(false)
         return
       }
 
-      logger.info('Client-side login successful', { email });
-      router.push("/")
+      logger.info("Client-side login successful", { email })
+
+      // Redirect to returnUrl if it exists, otherwise to home
+      if (returnUrl) {
+        router.push(returnUrl)
+      } else {
+        router.push("/")
+      }
+
       router.refresh()
     } catch (err) {
-      logger.error('Client-side login error', { 
-        error: err instanceof Error ? err.message : 'Unknown error',
+      logger.error("Client-side login error", {
+        error: err instanceof Error ? err.message : "Unknown error",
         stack: err instanceof Error ? err.stack : undefined,
-        email
-      });
+        email,
+      })
       setError("An unexpected error occurred. Please try again.")
       setIsLoading(false)
     }

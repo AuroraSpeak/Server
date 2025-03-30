@@ -2,9 +2,10 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getCurrentUser } from "@/lib/auth"
 import { validateCsrfOrThrow } from "@/lib/csrf-guard"
+import { randomBytes } from "crypto"
 
-// Delete an invitation
-export async function DELETE(req: Request, { params }: { params: { token: string } }) {
+// Resend an invitation
+export async function POST(req: Request, { params }: { params: { token: string } }) {
   try {
     validateCsrfOrThrow()
 
@@ -43,14 +44,26 @@ export async function DELETE(req: Request, { params }: { params: { token: string
       return new NextResponse("Forbidden", { status: 403 })
     }
 
-    // Delete the invitation
-    await prisma.invitation.delete({
+    // Generate a new token
+    const newToken = randomBytes(32).toString("hex")
+
+    // Update the invitation with a new token and expiration date
+    const updatedInvitation = await prisma.invitation.update({
       where: { token },
+      data: {
+        token: newToken,
+        status: "pending",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      },
     })
 
-    return new NextResponse("Invitation deleted successfully", { status: 200 })
+    // TODO: Send email with new invitation link
+    // const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${newToken}`;
+    // await sendInvitationEmail(invitation.email, inviteUrl);
+
+    return NextResponse.json(updatedInvitation)
   } catch (error) {
-    console.error("Error deleting invitation:", error)
+    console.error("Error resending invitation:", error)
     return new NextResponse("Internal Server Error", { status: 500 })
   }
 }

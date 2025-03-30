@@ -53,18 +53,22 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Gaming theme colors
-        gaming: {
-          primary: "#7C4DFF", // Vibrant purple
-          secondary: "#00E5FF", // Cyan/blue for accents
-          accent: "#FF1744", // Red for notifications/alerts
-          dark: "#121212", // Dark background
-          card: "#1E1E1E", // Slightly lighter than background
-          text: "#FFFFFF", // White text
-          muted: "#6E6E6E", // Muted text
-          success: "#00E676", // Green for online/success
-          warning: "#FFAB00", // Amber for away/warning
-          border: "#2D2D2D", // Subtle borders
+        // AuraSpeak theme colors
+        aura: {
+          bg: "hsl(var(--aura-bg))",
+          channels: "hsl(var(--aura-channels))",
+          chat: "hsl(var(--aura-chat))",
+          members: "hsl(var(--aura-members))",
+          "text-normal": "hsl(var(--aura-text-normal))",
+          "text-muted": "hsl(var(--aura-text-muted))",
+          interactive: "hsl(var(--aura-interactive))",
+          "interactive-hover": "hsl(var(--aura-interactive-hover))",
+          primary: "hsl(var(--aura-primary))",
+          secondary: "hsl(var(--aura-secondary))",
+          success: "hsl(var(--aura-success))",
+          warning: "hsl(var(--aura-warning))",
+          danger: "hsl(var(--aura-danger))",
+          special: "hsl(var(--aura-special))",
         },
       },
       borderRadius: {

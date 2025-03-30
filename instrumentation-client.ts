@@ -5,25 +5,33 @@ Sentry.init({
 
   // Add optional integrations for additional features
   integrations: [
-    Sentry.replayIntegration(),
     Sentry.browserTracingIntegration(),
-    Sentry.feedbackIntegration(),
+    Sentry.replayIntegration(),
   ],
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
 
   // Define how likely Replay events are sampled.
-  // This sets the sample rate to be 10%. You may want this to be 100% while
-  // in development and sample at a lower rate in production
   replaysSessionSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
 
   // Define how likely Replay events are sampled when an error occurs.
   replaysOnErrorSampleRate: process.env.NODE_ENV === 'production' ? 1.0 : 1.0,
 
-  // Setting this option to true will print useful information to the console while you're setting up Sentry.
-  debug: false,
-
   // Enable environment tracking
   environment: process.env.NODE_ENV,
+
+  // Configure CORS and allowed origins
+  allowUrls: [
+    /^https:\/\/auraspeak\.com/,
+    /^http:\/\/localhost/,
+  ],
+
+  // Filter out blocked requests
+  beforeSend(event) {
+    if (event.exception?.values?.[0]?.value?.includes('ERR_BLOCKED_BY_CLIENT')) {
+      return null;
+    }
+    return event;
+  },
 }); 

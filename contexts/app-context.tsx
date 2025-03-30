@@ -330,33 +330,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       icon: string
       color?: string
       type?: string
-      
     },
     csrfToken: string
   ): Promise<Server> => {
-  
-    const res = await fetch("/api/servers", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-csrf-token": csrfToken || "",
-      },
-      body: JSON.stringify(serverData),
-      credentials: "include",
-    })
-  
-    if (!res.ok) {
-      const message = await res.text()
-      throw new Error(`Failed to create server: ${message}`)
+    try {
+      const res = await fetch("/api/servers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        credentials: "include",
+        body: JSON.stringify(serverData),
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || "Failed to create server")
+      }
+
+      const server = await res.json()
+      setServers((prev) => [...prev, server])
+      return server
+    } catch (error) {
+      console.error("Error creating server:", error)
+      throw error
     }
-  
-    const createdServer: Server = await res.json()
-  
-    // Optionally: Update state
-    setServers((prev) => [...prev, createdServer])
-  
-    return createdServer
-  } 
+  }
 
   const createChannel = async (
     channelData: { name: string; type: "text" | "voice"; userLimit?: number },

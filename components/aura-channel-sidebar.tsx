@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/auth-provider"
 import { useAppContext } from "@/contexts/app-context"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import WebRTCStatus from "./webrtc-status"
 import { useCsrfToken } from "@/hooks/useCsrfToken"
 import * as Sentry from "@sentry/nextjs"
+import { InvitationDialog } from "./invitation-dialog"
 
 interface ChannelSidebarProps {
   activeServer: string
@@ -55,7 +56,7 @@ export default function AuraChannelSidebar({
   })
 
   const { createChannel } = useAppContext()
-  const { csrfToken } = useCsrfToken()      
+  const { csrfToken } = useCsrfToken()
 
   // State for add channel dialog
   const [showAddChannelDialog, setShowAddChannelDialog] = useState(false)
@@ -79,33 +80,32 @@ export default function AuraChannelSidebar({
 
   const handleCreateChannel = async () => {
     if (!newChannelName.trim()) {
-        alert("Please enter a channel name")
-        return
-      } 
-      
+      alert("Please enter a channel name")
+      return
+    }
 
-      if (!csrfToken) {
-        alert("CSRF token is missing. Please try again.")
-        return
-      }
+    if (!csrfToken) {
+      alert("CSRF token is missing. Please try again.")
+      return
+    }
 
-      try {
-        await createChannel(
-          {
-            name: newChannelName,
-            type: channelType,
-          },
-          csrfToken
-        )
-      } catch (error) {
-        console.error("Failed to create channel:", error)
-        alert("An error occurred while creating the channel. Please try again.")
-      } finally {
-        setShowAddChannelDialog(false)
-        setNewChannelName("")
-        setChannelType("text")
-      }
-  } 
+    try {
+      await createChannel(
+        {
+          name: newChannelName,
+          type: channelType,
+        },
+        csrfToken,
+      )
+    } catch (error) {
+      console.error("Failed to create channel:", error)
+      alert("An error occurred while creating the channel. Please try again.")
+    } finally {
+      setShowAddChannelDialog(false)
+      setNewChannelName("")
+      setChannelType("text")
+    }
+  }
 
   const handleChannelClick = (channelId: string, channelType: string) => {
     setActiveChannel(channelId)
@@ -118,21 +118,24 @@ export default function AuraChannelSidebar({
 
   const testSentry = () => {
     try {
-      throw new Error("Test-Fehler aus der Sidebar");
+      throw new Error("Test-Fehler aus der Sidebar")
     } catch (error) {
-      Sentry.captureException(error);
-      Sentry.captureMessage("Test-Nachricht aus der Sidebar", "info");
+      Sentry.captureException(error)
+      Sentry.captureMessage("Test-Nachricht aus der Sidebar", "info")
     }
-  };
+  }
 
   return (
     <div className="aura-channels flex flex-col h-full bg-aura-channels">
       {/* Server header */}
       <div className="p-4 border-b border-aura-bg shadow-sm flex items-center justify-between">
         <h1 className="font-bold truncate text-white">{serverName}</h1>
-        <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
-          <ChevronDown size={16} />
-        </Button>
+        <div className="flex items-center space-x-2">
+          <InvitationDialog serverId={activeServer} />
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-aura-interactive">
+            <ChevronDown size={16} />
+          </Button>
+        </div>
       </div>
 
       {/* Channels */}
@@ -290,6 +293,9 @@ export default function AuraChannelSidebar({
         <DialogContent className="bg-aura-bg border-aura-muted text-white">
           <DialogHeader>
             <DialogTitle>Create New Channel</DialogTitle>
+            <DialogDescription className="text-aura-text-muted">
+              Add a new text or voice channel to your server.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -347,3 +353,4 @@ export default function AuraChannelSidebar({
     </div>
   )
 }
+

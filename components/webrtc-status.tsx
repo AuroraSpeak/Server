@@ -38,6 +38,7 @@ export default function WebRTCStatus() {
     }
   }, [peerConnections])
 
+  // Update styling classes to use the Tailwind classes that reference our custom variables
   const statusClasses = {
     connected: "bg-green-500/10 text-green-500 border-green-500/20",
     connecting: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",

@@ -22,7 +22,9 @@ const options = {
           environment: process.env.NODE_ENV || 'development'
         },
         format: winston.format.json(),
-        replaceTimestamp: true
+        replaceTimestamp: true,
+        json: true,
+        batching: false
       })
     ]),
     // Konsolen-Transport für alle Umgebungen
