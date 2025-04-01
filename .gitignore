@@ -1,29 +1,110 @@
-# Dependency directories
+# Dependencies
 node_modules/
+.pnpm-store/
+vendor/
+go.sum
 
-# Next.js build output
+# Build outputs
+dist/
+build/
 .next/
 out/
-build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
 
-# Optional: TypeScript build info
-*.tsbuildinfo
-
-# Environment variable files
+# Environment variables
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
+.env.development
+.env.test
+.env.production
 
-# Log files
-pnpm-debug.log*
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# OS-specific files for macOS
+# Testing
+coverage/
+.nyc_output/
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# System Files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-prisma/migrations/*
 
+# Sentry
+.sentryclirc
+
+# Grafana
+grafana/data/
+grafana/provisioning/
+
+# Prometheus
+prometheus/data/
+
+# Redis
+redis/data/
+
+# PostgreSQL
+postgres/data/
+
+# PgAdmin
+pgadmin/data/
+
+# Go specific
+*.test
+*.out
+go.work
+
+# Next.js specific
+.next/
+out/
+.next
+next-env.d.ts
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Misc
+*.bak
+*.tmp
+*.temp
+.cache/ 

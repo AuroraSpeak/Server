@@ -17,6 +17,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -27,7 +32,8 @@ jobs:
         with:
           version: 8
 
-      - name: Install dependencies
+      - name: Install Frontend dependencies
+        working-directory: frontend
         run: pnpm install
 
       - name: Run Semgrep scan
@@ -36,23 +42,32 @@ jobs:
           config: >-
             p/owasp-top-ten
             p/react
-            p/nodejs
+            p/go
 
-      - name: Read version from package.json
+      - name: Read version from backend
         id: get_version
-        run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+        working-directory: backend
+        run: echo "VERSION=$(go run cmd/version/main.go)" >> $GITHUB_ENV
 
       - name: Lowercase GitHub owner
         run: echo "OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
-      - name: Build Next.js app
+      - name: Build Frontend
+        working-directory: frontend
         run: pnpm run build
+
+      - name: Build Backend
+        working-directory: backend
+        run: |
+          go mod download
+          go build -o dist/auraspeak cmd/server/main.go
 
       - name: Prepare package layout
         run: |
           mkdir -p pkg/opt/auraspeak
           mkdir -p pkg/etc/systemd/system
-          cp -r .next public package.json pnpm-lock.yaml scripts systemd pkg/opt/auraspeak/
+          cp -r backend/dist/auraspeak pkg/opt/auraspeak/backend/
+          cp -r frontend/dist pkg/opt/auraspeak/frontend/
           cp systemd/auraspeak.service pkg/etc/systemd/system/
 
       - name: Install fpm
@@ -69,7 +84,7 @@ jobs:
           fpm -s dir -t deb \
             -n auraspeak \
             -v "${VERSION}" \
-            --description "AuraSpeak Next.js Server App" \
+            --description "AuraSpeak Server App" \
             --deb-systemd pkg/etc/systemd/system/auraspeak.service \
             -C pkg .
 
@@ -91,21 +106,27 @@ jobs:
       - name: Prepare clean source archive
         run: |
           mkdir -p source
-          cp -r .next public package.json pnpm-lock.yaml scripts systemd source/
+          cp -r backend/dist/auraspeak source/backend/
+          cp -r frontend/dist source/frontend/
           tar -czf source.tar.gz -C source .
 
       - name: Generate changelog
-        run: npx conventional-changelog -p angular -i CHANGELOG.md -s
-        env:
-          HUSKY: 0
+        working-directory: backend
+        run: |
+          go install github.com/git-chglog/git-chglog/cmd/git-chglog@latest
+          git-chglog -o CHANGELOG.md
 
       - name: Bump version, tag, and push using PAT
         env:
           GH_TOKEN: ${{ secrets.GH_PUSH_PAT }}
         run: |
-          # Bump version without tagging
-          pnpm version patch --no-git-tag-version
-          VERSION=$(jq -r .version package.json)
+          cd backend
+          # Update version in version.go
+          VERSION=$(go run cmd/version/main.go)
+          NEW_VERSION=$(echo $VERSION | awk -F. '{$NF = $NF + 1;} 1' | sed 's/ /./g')
+          sed -i "s/Version = \"$VERSION\"/Version = \"$NEW_VERSION\"/" internal/version/version.go
+          VERSION=$NEW_VERSION
+          cd ..
           
           # Clone the repo fresh using the dev branch and PAT
           git clone --branch dev https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git repo
@@ -114,9 +135,10 @@ jobs:
           git config user.name "AuraSpeak CI"
           git config user.email "ci@auraspeak.dev"
           
-          cp ../package.json ../pnpm-lock.yaml ../CHANGELOG.md ./
+          cp ../backend/internal/version/version.go ./backend/internal/version/
+          cp ../backend/CHANGELOG.md ./backend/
           
-          git add package.json pnpm-lock.yaml CHANGELOG.md
+          git add backend/internal/version/version.go backend/CHANGELOG.md
           git commit -m "chore(release): v$VERSION [skip ci]"
           git tag "v$VERSION"
           

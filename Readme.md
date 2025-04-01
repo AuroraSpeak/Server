@@ -1,198 +1,176 @@
-[![Build & Release](https://github.com/AuroraSpeak/Server/actions/workflows/release.yml/badge.svg)](https://github.com/AuroraSpeak/Server/actions/workflows/release.yml)
-[![Docker Image](https://img.shields.io/badge/docker-ready-blue)](https://ghcr.io/auroraspeak/auraspeak)
-[![Semgrep Security Scan](https://img.shields.io/badge/security-scanned%20by%20semgrep-green)](https://semgrep.dev)
-[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
-[![Version](https://img.shields.io/github/package-json/v/AuroraSpeak/Server)](https://github.com/AuroraSpeak/Server/releases)
+# AuraSpeak
 
-> ⚠️ **This project is currently in _alpha_. Breaking changes are likely, and stability is not guaranteed.**
+AuraSpeak ist eine moderne Voice-Chat-Anwendung, die WebRTC für Echtzeit-Kommunikation nutzt. Die Anwendung ermöglicht es Benutzern, Server zu erstellen, Kanäle zu verwalten und in Echtzeit miteinander zu kommunizieren.
 
----
-## 🌟 Overview
+## Features
 
-AuraSpeak is a feature-rich voice communication platform designed for gamers, teams, and communities. Built with Next.js and WebRTC, it offers high-quality, low-latency voice chat with a sleek, customizable interface. Unlike traditional platforms, AuraSpeak focuses on providing a seamless audio experience with minimal resource usage.
+- 🎙️ Echtzeit-Voice-Chat mit WebRTC
+- 👥 Server- und Kanal-Management
+- 🔐 JWT-basierte Authentifizierung
+- 📊 Monitoring und Metriken
+- 🐛 Fehler-Tracking mit Sentry
+- 📧 E-Mail-Testing mit MailHog
+- 🗄️ PostgreSQL-Datenbank
+- 📈 Prometheus & Grafana Integration
 
-## ✨ Features
+## Technologie-Stack
 
-- **Real-time Voice Communication** - Crystal clear audio with WebRTC
-- **Text Messaging** - Full-featured text channels with rich formatting
-- **Server Organization** - Create and join multiple servers with customizable channels
-- **User Presence** - See who's online, speaking, or away
-- **Voice Activity Detection** - Automatically detect when users are speaking
-- **Audio Visualization** - Visual feedback for audio levels
-- **Responsive Design** - Works on desktop and mobile devices
-- **Dark Theme** - Easy on the eyes for long gaming sessions
-- **Low Latency** - Peer-to-peer connections for minimal delay
-- **Secure** - End-to-end encrypted voice communication
+### Frontend
+- Next.js
+- TypeScript
+- TailwindCSS
+- WebRTC
 
+### Backend
+- Go
+- Fiber (Web Framework)
+- GORM (ORM)
+- WebRTC
 
-## 🛠️ Technologies
+### Infrastruktur
+- Docker & Docker Compose
+- PostgreSQL
+- Redis
+- Prometheus & Grafana
+- Sentry
+- MailHog
 
-- **Frontend**: Next.js, React, TypeScript, Tailwind CSS
-- **Real-time Communication**: WebRTC, WebSockets
-- **Authentication**: JWT, bcrypt
-- **State Management**: React Context API
-- **UI Components**: shadcn/ui
-- **Database**: Prisma ORM
+## Voraussetzungen
 
+- Docker
+- Docker Compose
+- Go 1.21 oder höher
+- Node.js 18 oder höher
+- pnpm
 
-## 📋 Prerequisites
+## Installation
 
-- Node.js 18.x or higher
-- npm or yarn
-- A modern web browser with WebRTC support
-
-
-## 🚀 Getting Started
-
-### Installation
-
-1. Clone the repository:
-
-```shellscript
+1. Repository klonen:
+```bash
 git clone https://github.com/yourusername/auraspeak.git
 cd auraspeak
 ```
 
-
-2. Install dependencies:
-
-```shellscript
-npm install
-# or
-yarn install
+2. Umgebungsvariablen konfigurieren:
+```bash
+cp .env.example .env
+# Bearbeiten Sie die .env Datei mit Ihren Einstellungen
 ```
 
-
-3. Set up environment variables:
-
-```plaintext
-cp .env.example .env.local
+3. Docker-Container starten:
+```bash
+docker-compose up -d
 ```
 
-Edit `.env.local` with your configuration.
-
-
-4. Set up the database:
-
-```shellscript
-npx prisma migrate dev
-npx prisma db seed
+4. Frontend-Abhängigkeiten installieren:
+```bash
+cd frontend
+pnpm install
 ```
 
-
-5. Start the development server:
-
-```shellscript
-npm run dev
-# or
-yarn dev
+5. Backend-Abhängigkeiten installieren:
+```bash
+cd backend
+go mod tidy
 ```
 
+## Entwicklung
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-
-## 🎮 Usage
-
-### Creating an Account
-
-1. Navigate to the registration page
-2. Enter your username, email, and password
-3. Click "Create Account"
-
-
-### Joining a Server
-
-1. Log in to your account
-2. Click the "+" button in the server sidebar
-3. Enter a server invite code or create your own server
-
-
-### Voice Chat
-
-1. Join a voice channel by clicking on it
-2. Grant microphone permissions when prompted
-3. Start talking - your audio will be transmitted to other users in the channel
-4. Use the controls at the bottom to mute/unmute or adjust settings
-
-
-## 🔊 WebRTC Implementation
-
-AuraSpeak uses WebRTC for peer-to-peer voice communication, providing several advantages:
-
-- **Low Latency**: Direct connections between users minimize delay
-- **High Quality**: Adaptive bitrate for optimal audio quality
-- **Reduced Server Load**: P2P connections reduce server bandwidth requirements
-- **NAT Traversal**: ICE, STUN, and TURN servers handle complex network scenarios
-
-
-The implementation includes:
-
-- **Signaling Server**: Coordinates connection establishment between peers
-- **Peer Connection Management**: Handles WebRTC peer connections
-- **Media Stream Processing**: Captures and processes audio streams
-- **Voice Activity Detection**: Identifies when users are speaking
-- **Audio Visualization**: Provides visual feedback for audio levels
-
-
-## 📁 Project Structure
-
-```plaintext
-auraspeak/
-├── app/                  # Next.js app directory
-│   ├── (auth)/           # Authentication routes
-│   ├── api/              # API routes
-│   └── page.tsx          # Main application page
-├── components/           # React components
-│   ├── ui/               # UI components (shadcn/ui)
-│   ├── aura-logo.tsx     # Logo component
-│   ├── voice-chat.tsx    # Voice chat component
-│   └── ...               # Other components
-├── contexts/             # React contexts
-│   ├── app-context.tsx   # Application state
-│   └── webrtc-context.tsx # WebRTC functionality
-├── lib/                  # Utility functions
-│   ├── auth.ts           # Authentication utilities
-│   └── utils.ts          # General utilities
-├── prisma/               # Prisma ORM
-│   ├── schema.prisma     # Database schema
-│   └── seed.ts           # Seed data
-└── public/               # Static assets
+### Frontend-Entwicklung
+```bash
+cd frontend
+pnpm dev
 ```
 
-## 🔧 Configuration
+### Backend-Entwicklung
+```bash
+cd backend
+go run cmd/main.go
+```
 
-### Environment Variables
+### Docker-Entwicklung
+```bash
+docker-compose up -d
+```
 
-- `DATABASE_URL`: Connection string for your database
-- `JWT_SECRET`: Secret key for JWT authentication
-- `NEXT_PUBLIC_STUN_SERVERS`: STUN servers for WebRTC NAT traversal
-- `TURN_SERVER_URL`: TURN server URL (optional)
-- `TURN_SERVER_USERNAME`: TURN server username (optional)
-- `TURN_SERVER_CREDENTIAL`: TURN server credential (optional)
+## Verfügbare Services
 
+| Service    | URL                    | Beschreibung                    |
+|------------|------------------------|--------------------------------|
+| Frontend   | http://localhost:3000  | Next.js Frontend-Anwendung     |
+| Backend    | http://localhost:8080  | Go Backend-API                 |
+| PgAdmin    | http://localhost:5050  | PostgreSQL Admin Interface     |
+| Grafana    | http://localhost:4000  | Monitoring Dashboard           |
+| Prometheus | http://localhost:9090  | Metriken & Monitoring         |
+| MailHog    | http://localhost:8025  | E-Mail-Testing Interface       |
+| Sentry     | http://localhost:9000  | Fehler-Tracking Dashboard      |
 
-## 🤝 Contributing
+## Monitoring
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### Prometheus Metriken
+- HTTP-Anfragen
+- WebRTC-Verbindungen
+- Datenbank-Performance
+- Speicherverbrauch
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Grafana Dashboards
+- System-Übersicht
+- Anwendungs-Metriken
+- Datenbank-Performance
+- WebRTC-Statistiken
 
+## Fehler-Tracking
 
-## 📝 License
+Sentry ist für Fehler-Tracking und Performance-Monitoring eingerichtet. Fehler werden automatisch erfasst und können im Sentry-Dashboard eingesehen werden.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## E-Mail-Testing
 
-## 🙏 Acknowledgements
+MailHog ist für das Testen von E-Mail-Funktionalitäten eingerichtet. Alle gesendeten E-Mails werden im MailHog-Interface angezeigt.
 
-- [WebRTC.org](https://webrtc.org/) - For the amazing technology
-- [Next.js](https://nextjs.org/) - The React framework
-- [Tailwind CSS](https://tailwindcss.com/) - For the styling
-- [shadcn/ui](https://ui.shadcn.com/) - For the beautiful UI components
+## Datenbank
 
+### PostgreSQL
+- Port: 5432
+- Benutzer: postgres
+- Datenbank: auraspeak
 
----
+### PgAdmin
+- URL: http://localhost:5050
+- E-Mail: admin@auraspeak.com
+- Passwort: admin
+
+## WebRTC
+
+### STUN/TURN Server
+- STUN: stun:localhost:3478
+- TURN: turn:localhost:3478
+- Benutzer: auraspeak
+- Passwort: auraspeak
+
+## Deployment
+
+1. Produktions-Umgebungsvariablen konfigurieren
+2. Docker-Images bauen:
+```bash
+docker-compose -f docker-compose.prod.yml build
+```
+3. Container starten:
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+## Lizenz
+
+MIT
+
+## Beitragen
+
+1. Fork das Repository
+2. Erstelle einen Feature-Branch
+3. Committe deine Änderungen
+4. Push zum Branch
+5. Erstelle einen Pull Request
+
+## Support
+
+Bei Fragen oder Problemen erstellen Sie bitte ein Issue im GitHub-Repository. 

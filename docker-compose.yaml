@@ -1,10 +1,36 @@
+version: '3.8'
+
+x-resources: &resources
+  deploy:
+    resources:
+      limits:
+        cpus: '0.5'
+        memory: 512M
+      reservations:
+        cpus: '0.2'
+        memory: 256M
+
+x-network: &network
+  networks:
+    - voice-net
+
+x-healthcheck: &healthcheck
+  healthcheck:
+    interval: 5s
+    timeout: 5s
+    retries: 5
+
+x-env: &env
+  environment:
+    - TZ=UTC
+
 services:
+  # Frontend Services
   nextapp-dev:
     build:
       context: .
       dockerfile: Dockerfile
       target: dev
-    container_name: nextapp-dev
     command: pnpm dev
     ports:
       - "3000:3000"
@@ -15,38 +41,45 @@ services:
     environment:
       NODE_ENV: development
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?connect_timeout=300
+      NODE_OPTIONS: "--max-old-space-size=512"
+      SENTRY_DSN: ${SENTRY_DSN}
+      REDIS_URL: redis://redis:6379
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_TURN_SERVER: localhost
+      NEXT_PUBLIC_TURN_PORT: 3478
+      NEXT_PUBLIC_TURN_USERNAME: ${TURN_USERNAME:-auraspeak}
+      NEXT_PUBLIC_TURN_PASSWORD: ${TURN_PASSWORD:-auraspeak}
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    networks:
-      - voice-net
+      backend:
+        condition: service_healthy
+    <<: [*network]
 
+  # Database Services
   postgres:
     image: postgres:16-alpine
-    container_name: postgres
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      <<: *healthcheck
     deploy:
       resources:
         limits:
@@ -55,178 +88,155 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-    networks:
-      - voice-net
+    <<: [*network]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    <<: [*resources, *network]
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     ports:
       - "5050:80"
     volumes:
       - pgadmin-data:/var/lib/pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    networks:
-      - voice-net
+    <<: [*resources, *network]
 
+  # Backend Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+    environment:
+      PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-key-123}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      ALLOWED_ORIGINS: http://localhost:5173
+      SENTRY_DSN: ${SENTRY_DSN}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://localhost:8080/health"]
+      <<: *healthcheck
+    <<: [*resources, *network]
+
+  # Cache Services
   redis:
     image: redis:6-alpine
-    container_name: redis
-    restart: always
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
     volumes:
       - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    networks:
-      - voice-net
+    <<: [*resources, *network]
 
-  glitchtip:
-    image: glitchtip/glitchtip
-    container_name: glitchtip
-    environment:
-      DATABASE_URL: ${GLITCHTIP_DATABASE_URL}
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
-      ENABLE_OPEN_USER_REGISTRATION: ${ENABLE_OPEN_USER_REGISTRATION}
-      GLITCHTIP_DOMAIN: http://localhost:8000
-      PORT: 8000
+  # WebRTC Services
+  coturn:
+    image: coturn/coturn
     ports:
-      - "8000:8000"
-    volumes:
-      - glitchtip-data:/code/data
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    networks:
-      - voice-net
-
-  glitchtip-worker:
-    image: glitchtip/glitchtip
-    container_name: glitchtip-worker
-    command: ["celery", "-A", "glitchtip", "worker", "-l", "INFO", "--concurrency=2"]
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
     environment:
-      DATABASE_URL: ${GLITCHTIP_DATABASE_URL}
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    networks:
-      - voice-net
+      - TURN_SERVER_NAME=auraspeak
+      - TURN_REALM=auraspeak
+      - TURN_USERNAME=${TURN_USERNAME:-auraspeak}
+      - TURN_PASSWORD=${TURN_PASSWORD:-auraspeak}
+      - TURN_MIN_PORT=49152
+      - TURN_MAX_PORT=65535
+    <<: [*resources, *network]
 
+  # Monitoring Services
   prometheus:
     image: prom/prometheus
-    container_name: prometheus
+    ports:
+      - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    networks:
-      - voice-net
+    <<: [*resources, *network]
 
   grafana:
     image: grafana/grafana
-    container_name: grafana
     ports:
       - "4000:3000"
-    depends_on:
-      - prometheus
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    networks:
-      - voice-net
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-worldmap-panel
+    depends_on:
+      - prometheus
+    <<: [*resources, *network]
 
-  loki:
-    image: grafana/loki
-    container_name: loki
+  # Development Tools
+  mailhog:
+    image: mailhog/mailhog
     ports:
-      - "3100:3100"
+      - "1025:1025"
+      - "8025:8025"
+    <<: [*resources, *network]
+
+  # Error Tracking
+  sentry:
+    image: getsentry/sentry
+    ports:
+      - "9000:9000"
+    environment:
+      - SENTRY_SECRET_KEY=${SENTRY_SECRET_KEY}
+      - SENTRY_POSTGRES_HOST=postgres
+      - SENTRY_DB_USER=${POSTGRES_USER}
+      - SENTRY_DB_PASSWORD=${POSTGRES_PASSWORD}
+      - SENTRY_DB_NAME=sentry
+      - SENTRY_REDIS_HOST=redis
+      - SENTRY_REDIS_PORT=6379
     volumes:
-      - loki-data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          cpus: '0.2'
-          memory: 256M
-    networks:
-      - voice-net
+      - sentry-data:/var/lib/sentry/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    <<: [*resources, *network]
 
 networks:
   voice-net:
@@ -236,8 +246,7 @@ volumes:
   next-cache:
   postgres-data:
   pgadmin-data:
-  glitchtip-data:
-  grafana-data:
   prometheus-data:
-  loki-data:
+  grafana-data:
   redis-data:
+  sentry-data:
