@@ -160,4 +160,36 @@ func (h *ServerHandler) DeleteServer(c *fiber.Ctx) error {
 	}
 
 	return c.SendStatus(fiber.StatusOK)
-} 
+}
+
+func (h *ServerHandler) GetServerStats(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid server ID",
+		})
+	}
+
+	userID := c.Locals("userID").(uint)
+	isMember, err := h.serverService.IsMember(uint(id), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to check membership",
+		})
+	}
+
+	if !isMember {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Not a member of this server",
+		})
+	}
+
+	stats, err := h.serverService.GetServerStats(uint(id))
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to get server stats",
+		})
+	}
+
+	return c.JSON(stats)
+}

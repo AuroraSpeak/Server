@@ -1,5 +1,15 @@
 # AuraSpeak
 
+> ⚠️ **ALPHA-VERSION** ⚠️
+> 
+> Dies ist eine Alpha-Version von AuraSpeak. Die Anwendung befindet sich noch in der Entwicklung und kann instabil sein. Funktionen können sich ändern oder hinzukommen. Bitte verwenden Sie diese Version nur zu Entwicklungs- und Testzwecken.
+> 
+> Bekannte Einschränkungen:
+> - WebRTC-Funktionalität ist noch nicht vollständig implementiert
+> - Einige Features sind möglicherweise nicht verfügbar
+> - Performance-Optimierungen stehen noch aus
+> - Dokumentation ist unvollständig
+
 AuraSpeak ist eine moderne Voice-Chat-Anwendung, die WebRTC für Echtzeit-Kommunikation nutzt. Die Anwendung ermöglicht es Benutzern, Server zu erstellen, Kanäle zu verwalten und in Echtzeit miteinander zu kommunizieren.
 
 ## Features

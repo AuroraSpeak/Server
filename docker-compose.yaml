@@ -1,119 +1,44 @@
 version: '3.8'
 
-x-resources: &resources
-  deploy:
-    resources:
-      limits:
-        cpus: '0.5'
-        memory: 512M
-      reservations:
-        cpus: '0.2'
-        memory: 256M
-
-x-network: &network
-  networks:
-    - voice-net
-
-x-healthcheck: &healthcheck
-  healthcheck:
-    interval: 5s
-    timeout: 5s
-    retries: 5
-
-x-env: &env
-  environment:
-    - TZ=UTC
-
 services:
   # Frontend Services
   nextapp-dev:
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile
-      target: dev
-    command: pnpm dev
     ports:
       - "3000:3000"
     volumes:
-      - ./:/app
+      - ./frontend:/app
       - /app/node_modules
-      - next-cache:/app/.next
+      - /app/.pnpm-store
+      - /app/.next
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?connect_timeout=300
-      NODE_OPTIONS: "--max-old-space-size=512"
-      SENTRY_DSN: ${SENTRY_DSN}
-      REDIS_URL: redis://redis:6379
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-      NEXT_PUBLIC_TURN_SERVER: localhost
-      NEXT_PUBLIC_TURN_PORT: 3478
-      NEXT_PUBLIC_TURN_USERNAME: ${TURN_USERNAME:-auraspeak}
-      NEXT_PUBLIC_TURN_PASSWORD: ${TURN_PASSWORD:-auraspeak}
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.25'
-          memory: 256M
+      VITE_API_URL: http://localhost:8080
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+      VITE_DEV_SERVER_HOST: "0.0.0.0"
+      VITE_DEV_SERVER_PORT: "3000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
-    <<: [*network]
-
-  # Database Services
-  postgres:
-    image: postgres:16-alpine
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      - backend
+    networks:
+      - app-network
+    tty: true
+    stdin_open: true
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      <<: *healthcheck
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    <<: [*network]
-
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter
-    ports:
-      - "9187:9187"
-    environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    <<: [*resources, *network]
-
-  pgadmin:
-    image: dpage/pgadmin4
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin-data:/var/lib/pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    <<: [*resources, *network]
+      test: ["CMD", "wget", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /app
+        - action: rebuild
+          path: frontend/package.json
 
   # Backend Service
   backend:
@@ -124,129 +49,62 @@ services:
       - "8080:8080"
     volumes:
       - ./backend:/app
+      - /app/tmp
     environment:
       PORT: 8080
       JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-key-123}
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
-      DB_NAME: ${POSTGRES_DB}
-      ALLOWED_ORIGINS: http://localhost:5173
-      SENTRY_DSN: ${SENTRY_DSN}
-      REDIS_URL: redis://redis:6379
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-auraspeak}
+      ALLOWED_ORIGINS: http://localhost:3000
+      GO_ENV: development
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:8080/health"]
-      <<: *healthcheck
-    <<: [*resources, *network]
+      - postgres
+    networks:
+      - app-network
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /app
+        - action: rebuild
+          path: backend/go.mod
 
-  # Cache Services
-  redis:
-    image: redis:6-alpine
+  # Database
+  postgres:
+    image: postgres:16-alpine
     ports:
-      - "6379:6379"
+      - "5432:5432"
     volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    <<: [*resources, *network]
-
-  # WebRTC Services
-  coturn:
-    image: coturn/coturn
-    ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "5349:5349"
-      - "5349:5349/udp"
+      - postgres-data:/var/lib/postgresql/data
     environment:
-      - TURN_SERVER_NAME=auraspeak
-      - TURN_REALM=auraspeak
-      - TURN_USERNAME=${TURN_USERNAME:-auraspeak}
-      - TURN_PASSWORD=${TURN_PASSWORD:-auraspeak}
-      - TURN_MIN_PORT=49152
-      - TURN_MAX_PORT=65535
-    <<: [*resources, *network]
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-auraspeak}
+    networks:
+      - app-network
 
-  # Monitoring Services
-  prometheus:
-    image: prom/prometheus
+  # pgAdmin Service
+  pgadmin:
+    image: dpage/pgadmin4
     ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-    <<: [*resources, *network]
-
-  grafana:
-    image: grafana/grafana
-    ports:
-      - "4000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning
+      - "5050:80"
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_INSTALL_PLUGINS: grafana-piechart-panel,grafana-worldmap-panel
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
     depends_on:
-      - prometheus
-    <<: [*resources, *network]
-
-  # Development Tools
-  mailhog:
-    image: mailhog/mailhog
-    ports:
-      - "1025:1025"
-      - "8025:8025"
-    <<: [*resources, *network]
-
-  # Error Tracking
-  sentry:
-    image: getsentry/sentry
-    ports:
-      - "9000:9000"
-    environment:
-      - SENTRY_SECRET_KEY=${SENTRY_SECRET_KEY}
-      - SENTRY_POSTGRES_HOST=postgres
-      - SENTRY_DB_USER=${POSTGRES_USER}
-      - SENTRY_DB_PASSWORD=${POSTGRES_PASSWORD}
-      - SENTRY_DB_NAME=sentry
-      - SENTRY_REDIS_HOST=redis
-      - SENTRY_REDIS_PORT=6379
-    volumes:
-      - sentry-data:/var/lib/sentry/files
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    <<: [*resources, *network]
+      - postgres
+    networks:
+      - app-network
 
 networks:
-  voice-net:
+  app-network:
     driver: bridge
 
 volumes:
-  next-cache:
   postgres-data:
   pgadmin-data:
-  prometheus-data:
-  grafana-data:
-  redis-data:
-  sentry-data:

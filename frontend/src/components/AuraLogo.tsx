@@ -1,17 +1,14 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
 
 interface AuraLogoProps {
-  size?: number;
-  className?: string;
+  size?: number
+  className?: string
 }
 
 export default function AuraLogo({ size = 32, className }: AuraLogoProps) {
   return (
     <div
-      className={cn(
-        "flex items-center justify-center rounded-full bg-aura-primary text-white",
-        className,
-      )}
+      className={cn("flex items-center justify-center rounded-full bg-aura-primary text-white", className)}
       style={{ width: size, height: size }}
     >
       <svg
@@ -29,5 +26,6 @@ export default function AuraLogo({ size = 32, className }: AuraLogoProps) {
         <line x1="12" x2="12" y1="19" y2="22" />
       </svg>
     </div>
-  );
+  )
 }
+

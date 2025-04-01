@@ -16,6 +16,10 @@ func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 	}
 }
 
+func (h *AuthHandler) Service() *services.AuthService {
+	return h.authService
+}
+
 type RegisterRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -69,4 +73,4 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 func (h *AuthHandler) Me(c *fiber.Ctx) error {
 	user := c.Locals("user").(*models.User)
 	return c.JSON(user.ToResponse())
-} 
+}

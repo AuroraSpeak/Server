@@ -1,5 +1,5 @@
-import { Loader2 } from "lucide-react";
-import AuraLogo from "./AuraLogo";
+import { Loader2 } from "lucide-react"
+import AuraLogo from "./AuraLogo"
 
 export default function LoadingScreen() {
   return (
@@ -9,5 +9,6 @@ export default function LoadingScreen() {
         <Loader2 className="h-8 w-8 animate-spin text-aura-primary" />
       </div>
     </div>
-  );
+  )
 }
+

@@ -16,6 +16,13 @@ type Server struct {
 	Channels    []Channel `json:"channels" gorm:"foreignKey:ServerID"`
 }
 
+type ServerStats struct {
+	CPU    float64 `json:"cpu"`
+	Memory float64 `json:"memory"`
+	Disk   float64 `json:"disk"`
+	Uptime int64   `json:"uptime"`
+}
+
 type ServerResponse struct {
 	ID          uint      `json:"id"`
 	Name        string    `json:"name"`
@@ -36,4 +43,4 @@ func (s *Server) ToResponse() *ServerResponse {
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,
 	}
-} 
+}

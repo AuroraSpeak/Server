@@ -103,3 +103,15 @@ func (s *ServerService) GetChannel(id uint) (*models.Channel, error) {
 	}
 	return &channel, nil
 }
+
+func (s *ServerService) GetServerStats(id uint) (*models.ServerStats, error) {
+	// TODO: Implementiere echte Server-Statistiken
+	// Dies ist nur ein Mock für Demonstrationszwecke
+	stats := &models.ServerStats{
+		CPU:    45.5,
+		Memory: 60.2,
+		Disk:   75.8,
+		Uptime: 3600, // 1 Stunde in Sekunden
+	}
+	return stats, nil
+}
