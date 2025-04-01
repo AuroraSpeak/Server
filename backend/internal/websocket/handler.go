@@ -4,8 +4,20 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gofiber/websocket/v2"
+)
+
+const (
+	// Zeit erlaubt zwischen Ping/Pong
+	pongWait = 60 * time.Second
+
+	// Zeit zwischen Ping-Nachrichten
+	pingPeriod = (pongWait * 9) / 10
+
+	// Maximum message size allowed from peer.
+	maxMessageSize = 512 * 1024 // 512KB
 )
 
 type Client struct {
@@ -13,6 +25,7 @@ type Client struct {
 	Conn *websocket.Conn
 	Hub  *Hub
 	mu   sync.Mutex
+	send chan []byte // Kanal für ausgehende Nachrichten
 }
 
 type Hub struct {
@@ -49,10 +62,9 @@ func (h *Hub) Run() {
 		case client := <-h.unregister:
 			if _, ok := h.clients[client.ID]; ok {
 				delete(h.clients, client.ID)
-				close(client.Hub.broadcast)
+				close(client.send)
+				log.Printf("Client unregistered: %s", client.ID)
 			}
-			client.Conn.Close()
-			log.Printf("Client unregistered: %s", client.ID)
 
 		case message := <-h.broadcast:
 			var msg Message
@@ -62,11 +74,10 @@ func (h *Hub) Run() {
 			}
 
 			if targetClient, ok := h.clients[msg.TargetUserID]; ok {
-				targetClient.mu.Lock()
-				defer targetClient.mu.Unlock()
-				if err := targetClient.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-					log.Printf("Error sending message to client %s: %v", msg.TargetUserID, err)
-					targetClient.Conn.Close()
+				select {
+				case targetClient.send <- message:
+				default:
+					close(targetClient.send)
 					delete(h.clients, msg.TargetUserID)
 				}
 			}
@@ -77,7 +88,15 @@ func (h *Hub) Run() {
 func (c *Client) ReadPump() {
 	defer func() {
 		c.Hub.unregister <- c
+		c.Conn.Close()
 	}()
+
+	c.Conn.SetReadLimit(maxMessageSize)
+	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.Conn.SetPongHandler(func(string) error {
+		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
 
 	for {
 		messageType, message, err := c.Conn.ReadMessage()
@@ -96,12 +115,52 @@ func (c *Client) ReadPump() {
 			}
 
 			switch msg.Type {
-			case "call-request":
-				// Handle call request
-				c.Hub.broadcast <- message
-			case "offer", "answer", "ice-candidate":
+			case "call-request", "offer", "answer", "ice-candidate":
 				// Forward WebRTC signaling messages
 				c.Hub.broadcast <- message
+			}
+		}
+	}
+}
+
+func (c *Client) WritePump() {
+	ticker := time.NewTicker(pingPeriod)
+	defer func() {
+		ticker.Stop()
+		c.Conn.Close()
+	}()
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if !ok {
+				// Der Hub hat den Kanal geschlossen
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			w, err := c.Conn.NextWriter(websocket.TextMessage)
+			if err != nil {
+				return
+			}
+			w.Write(message)
+
+			// Füge wartende Nachrichten zur aktuellen WebSocket-Nachricht hinzu
+			n := len(c.send)
+			for i := 0; i < n; i++ {
+				w.Write([]byte{'\n'})
+				w.Write(<-c.send)
+			}
+
+			if err := w.Close(); err != nil {
+				return
+			}
+
+		case <-ticker.C:
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return
 			}
 		}
 	}

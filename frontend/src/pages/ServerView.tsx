@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { Send, Mic, MicOff, PhoneOff, Users, Hash, Plus, Settings, Volume2 } from "lucide-react"
+import { Send, Mic, MicOff, PhoneOff, Users, Hash, Settings, Volume2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -38,17 +38,21 @@ interface Channel {
 }
 
 export default function ServerView() {
-  const { serverId } = useParams()
-  const navigate = useNavigate()
   const {
     isConnected,
+    isConnecting,
     localStream,
     remoteStreams,
     connect,
     disconnect,
     toggleMute,
     isMuted,
+    activeSpeakers,
+    currentChannelId,
+    error,
   } = useWebRTC()
+  const { serverId } = useParams()
+  const navigate = useNavigate()
   const [message, setMessage] = useState("")
   const [server, setServer] = useState<Server | null>(null)
   const [stats, setStats] = useState<ServerStats | null>(null)
@@ -161,14 +165,34 @@ export default function ServerView() {
     if (!channel || !serverId) return
 
     if (channel.type === "voice") {
+      setActiveChannel(channelId)
+      setActiveTab("voice")
+
       if (isConnected) {
+        // If already connected to this channel, do nothing
+        if (currentChannelId === channelId) {
+          return
+        }
+
+        // If connected to a different channel, disconnect first
         await disconnect()
-      } else {
-        await connect(serverId)
       }
-      setActiveChannel(channelId)
+
+      try {
+        // Connect to the voice channel
+        await connect(serverId, channelId)
+      } catch (error) {
+        console.error("Failed to connect to voice channel:", error)
+        toast({
+          title: "Verbindungsfehler",
+          description: "Konnte nicht mit dem Sprachkanal verbinden.",
+          variant: "destructive",
+        })
+      }
     } else {
+      // Text channel
       setActiveChannel(channelId)
+      setActiveTab("text")
     }
   }
 
@@ -353,55 +377,109 @@ export default function ServerView() {
           </>
         )}
 
-        {activeTab === "voice" && isConnected && (
+        {activeTab === "voice" && (
           <div className="flex-1 flex flex-col items-center justify-center p-6">
             <Card className="w-full max-w-3xl p-6">
               <h3 className="text-xl font-semibold mb-4 text-center">
                 Sprachkanal: {channels.find((c) => c.id === activeChannel)?.name}
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                {/* Local User */}
-                <div className="flex flex-col items-center p-4 border rounded-lg">
-                  <Avatar className="h-20 w-20 mb-4">
-                    <AvatarImage src="/placeholder.svg?height=80&width=80" />
-                    <AvatarFallback>ME</AvatarFallback>
-                  </Avatar>
-                  <h4 className="font-medium mb-2">Du</h4>
-                  <div className="flex gap-2 mt-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className={isMuted ? "text-red-500" : ""}
-                      onClick={toggleMute}
-                    >
-                      {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              {isConnected ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    {/* Local User */}
+                    <div className="flex flex-col items-center p-4 border rounded-lg">
+                      <div className="relative">
+                        <Avatar className="h-20 w-20 mb-4">
+                          <AvatarImage src="/placeholder.svg?height=80&width=80" />
+                          <AvatarFallback>ME</AvatarFallback>
+                        </Avatar>
+                        {activeSpeakers.has("local") && (
+                          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-1 ring-background"></span>
+                        )}
+                      </div>
+                      <h4 className="font-medium mb-2">Du</h4>
+                      <div className="flex gap-2 mt-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className={isMuted ? "text-red-500" : ""}
+                          onClick={toggleMute}
+                        >
+                          {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Remote Users */}
+                    {Array.from(remoteStreams.entries()).map(([userId, stream]) => (
+                      <div key={userId} className="flex flex-col items-center p-4 border rounded-lg">
+                        <div className="relative">
+                          <Avatar className="h-20 w-20 mb-4">
+                            <AvatarImage src={`/placeholder.svg?height=80&width=80&text=${userId.substring(0, 2)}`} />
+                            <AvatarFallback>{userId.substring(0, 2)}</AvatarFallback>
+                          </Avatar>
+                          {activeSpeakers.has(userId) && (
+                            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-green-500 ring-1 ring-background"></span>
+                          )}
+                          <audio
+                            ref={(audio) => {
+                              if (audio) {
+                                audio.srcObject = stream
+                                audio.autoplay = true
+                              }
+                            }}
+                          />
+                        </div>
+                        <h4 className="font-medium mb-2">User {userId.substring(0, 6)}</h4>
+                      </div>
+                    ))}
+
+                    {/* Placeholder for empty slots */}
+                    {remoteStreams.size === 0 && (
+                      <div className="flex flex-col items-center p-4 border rounded-lg border-dashed">
+                        <div className="h-20 w-20 mb-4 rounded-full bg-muted flex items-center justify-center">
+                          <Users className="h-10 w-10 text-muted-foreground/50" />
+                        </div>
+                        <h4 className="font-medium mb-2 text-muted-foreground">Warte auf Teilnehmer...</h4>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-center">
+                    <Button variant="destructive" onClick={disconnect} className="gap-2">
+                      <PhoneOff className="h-4 w-4" />
+                      Kanal verlassen
                     </Button>
                   </div>
-                </div>
-
-                {/* Remote Users */}
-                {voiceUsers.map((user) => (
-                  <div key={user.id} className="flex flex-col items-center p-4 border rounded-lg">
-                    <Avatar className="h-20 w-20 mb-4">
-                      <AvatarImage src={user.avatar} />
-                      <AvatarFallback>{user.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <h4 className="font-medium mb-2">{user.name}</h4>
-                    <div className="flex gap-2 mt-2">
-                      {user.isMuted && <MicOff className="h-4 w-4 text-red-500" />}
-                      {user.isSpeaking && <span className="h-2 w-2 rounded-full bg-green-500"></span>}
-                    </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-10">
+                  <div className="mb-6 text-center">
+                    <Volume2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <h4 className="text-lg font-medium">Sprachkanal beitreten</h4>
+                    <p className="text-muted-foreground mt-2">
+                      Klicke auf den Button, um dem Sprachkanal beizutreten und mit anderen zu sprechen.
+                    </p>
                   </div>
-                ))}
-              </div>
 
-              <div className="flex justify-center">
-                <Button variant="destructive" onClick={disconnect} className="gap-2">
-                  <PhoneOff className="h-4 w-4" />
-                  Kanal verlassen
-                </Button>
-              </div>
+                  <Button onClick={() => connect(serverId!, activeChannel!)} disabled={isConnecting} className="gap-2">
+                    {isConnecting ? (
+                      <>
+                        <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                        Verbinde...
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-4 w-4" />
+                        Kanal beitreten
+                      </>
+                    )}
+                  </Button>
+
+                  {error && <p className="text-destructive text-sm mt-4">Fehler: {error}</p>}
+                </div>
+              )}
             </Card>
           </div>
         )}

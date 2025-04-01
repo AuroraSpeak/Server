@@ -1,163 +1,162 @@
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useEffect, useRef, useState } from "react"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
+import type { ReactNode } from "react"
+import { voiceService } from "@/services/voice"
+import { toast } from "sonner"
 
 interface WebRTCContextType {
   isConnected: boolean
+  isConnecting: boolean
   localStream: MediaStream | null
   remoteStreams: Map<string, MediaStream>
-  connect: (serverId: string) => Promise<void>
+  connect: (serverId: string, channelId: string) => Promise<void>
   disconnect: () => void
   toggleMute: () => void
   toggleVideo: () => void
   isMuted: boolean
   isVideoEnabled: boolean
+  activeSpeakers: Set<string>
+  currentChannelId: string | null
+  currentServerId: string | null
+  error: string | null
 }
 
 const WebRTCContext = createContext<WebRTCContextType | null>(null)
 
-export function WebRTCProvider({ children }: { children: React.ReactNode }) {
+export function WebRTCProvider({ children }: { children: ReactNode }) {
   const [isConnected, setIsConnected] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map())
   const [isMuted, setIsMuted] = useState(false)
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true)
+  const [isVideoEnabled, setIsVideoEnabled] = useState(false)
+  const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set())
+  const [currentChannelId, setCurrentChannelId] = useState<string | null>(null)
+  const [currentServerId, setCurrentServerId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
-  const ws = useRef<WebSocket | null>(null)
-
-  const createPeerConnection = (peerId: string) => {
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    })
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        ws.current?.send(
-          JSON.stringify({
-            type: "candidate",
-            candidate: event.candidate,
-            peerId: peerId,
-          }),
-        )
-      }
-    }
-
-    pc.ontrack = (event) => {
+  // Set up event listeners for the voice service
+  useEffect(() => {
+    const handleRemoteStream = (stream: MediaStream, userId: string) => {
       setRemoteStreams((prev) => {
         const newStreams = new Map(prev)
-        newStreams.set(peerId, event.streams[0])
+        newStreams.set(userId, stream)
         return newStreams
       })
     }
 
-    pc.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state for ${peerId}:`, pc.iceConnectionState)
-    }
-
-    return pc
-  }
-
-  const connect = async (serverId: string) => {
-    try {
-      // WebSocket-Verbindung herstellen
-      ws.current = new WebSocket(`ws://localhost:8080/ws/${serverId}`)
-
-      ws.current.onopen = () => {
-        setIsConnected(true)
-      }
-
-      ws.current.onmessage = async (event) => {
-        const data = JSON.parse(event.data)
-
-        switch (data.type) {
-          case "offer":
-            const pc = createPeerConnection(data.peerId)
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer))
-            const answer = await pc.createAnswer()
-            await pc.setLocalDescription(answer)
-
-            ws.current?.send(
-              JSON.stringify({
-                type: "answer",
-                answer: answer,
-                peerId: data.peerId,
-              }),
-            )
-
-            peerConnections.current.set(data.peerId, pc)
-            break
-
-          case "answer":
-            const pc2 = peerConnections.current.get(data.peerId)
-            if (pc2) {
-              await pc2.setRemoteDescription(new RTCSessionDescription(data.answer))
-            }
-            break
-
-          case "candidate":
-            const pc3 = peerConnections.current.get(data.peerId)
-            if (pc3) {
-              await pc3.addIceCandidate(new RTCIceCandidate(data.candidate))
-            }
-            break
+    const handleSpeakingStateChanged = ({ userId, isSpeaking }: { userId: string; isSpeaking: boolean }) => {
+      setActiveSpeakers((prev) => {
+        const newSpeakers = new Set(prev)
+        if (isSpeaking) {
+          newSpeakers.add(userId)
+        } else {
+          newSpeakers.delete(userId)
         }
-      }
-
-      // Lokalen Stream abrufen
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true,
+        return newSpeakers
       })
-      setLocalStream(stream)
-    } catch (error) {
-      console.error("Fehler beim Verbinden:", error)
-      throw error
-    }
-  }
-
-  const disconnect = () => {
-    if (ws.current) {
-      ws.current.close()
-      ws.current = null
     }
 
-    localStream?.getTracks().forEach((track) => track.stop())
+    const handleCallStatusChanged = (call: any) => {
+      if (call.status === "active") {
+        setIsConnected(true)
+        setIsConnecting(false)
+      } else if (call.status === "ended") {
+        setIsConnected(false)
+        setIsConnecting(false)
+      }
+    }
+
+    voiceService.onRemoteStream(handleRemoteStream)
+    voiceService.onSpeakingStateChanged(handleSpeakingStateChanged)
+    voiceService.onCallStatusChanged(handleCallStatusChanged)
+
+    return () => {
+      voiceService.removeListener("remoteStream", handleRemoteStream)
+      voiceService.removeListener("speakingStateChanged", handleSpeakingStateChanged)
+      voiceService.removeListener("callStatusChanged", handleCallStatusChanged)
+    }
+  }, [])
+
+  const connect = useCallback(
+    async (serverId: string, channelId: string) => {
+      if (isConnected || isConnecting) {
+        console.log("Already connected or connecting")
+        return
+      }
+
+      setIsConnecting(true)
+      setError(null)
+
+      try {
+        console.log(`Connecting to server ${serverId}, channel ${channelId}`)
+
+        // Use the voice service to initiate a call
+        const call = await voiceService.initiateCall(channelId)
+
+        // Set state
+        setCurrentServerId(serverId)
+        setCurrentChannelId(channelId)
+        setIsMuted(voiceService.isMuted())
+
+        // Get the local stream from the voice service
+        const webrtcService = (voiceService as any).webrtcService
+        if (webrtcService) {
+          setLocalStream(webrtcService.getLocalStream())
+        }
+
+        setIsConnected(true)
+        toast.success("Connected to voice channel")
+      } catch (error) {
+        console.error("Error connecting to voice channel:", error)
+        setError("Failed to access microphone or connect to voice channel")
+        toast.error("Connection failed", {
+          description: "Could not access microphone or connect to voice channel",
+        })
+
+        // Clean up
+        await disconnect()
+      } finally {
+        setIsConnecting(false)
+      }
+    },
+    [isConnected, isConnecting],
+  )
+
+  const disconnect = useCallback(async () => {
+    console.log("Disconnecting from voice channel")
+
+    // Use the voice service to end the call
+    await voiceService.endCall()
+
+    // Reset state
     setLocalStream(null)
-
-    remoteStreams.forEach((stream) => {
-      stream.getTracks().forEach((track) => track.stop())
-    })
     setRemoteStreams(new Map())
-
-    peerConnections.current.clear()
     setIsConnected(false)
-  }
+    setIsConnecting(false)
+    setActiveSpeakers(new Set())
+    setCurrentChannelId(null)
+    setCurrentServerId(null)
+    setError(null)
 
-  const toggleMute = () => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0]
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled
-        setIsMuted(!audioTrack.enabled)
-      }
-    }
-  }
+    toast.info("Disconnected from voice channel")
+  }, [])
 
-  const toggleVideo = () => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0]
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled
-        setIsVideoEnabled(videoTrack.enabled)
-      }
-    }
-  }
+  const toggleMute = useCallback(() => {
+    const muted = voiceService.toggleMute()
+    setIsMuted(muted)
+  }, [])
 
+  const toggleVideo = useCallback(() => {
+    setIsVideoEnabled((prev) => !prev)
+    // In a real implementation, this would enable/disable video tracks
+  }, [])
+
+  // Clean up on unmount
   useEffect(() => {
     return () => {
-      disconnect()
+      voiceService.endCall()
     }
   }, [])
 
@@ -165,6 +164,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
     <WebRTCContext.Provider
       value={{
         isConnected,
+        isConnecting,
         localStream,
         remoteStreams,
         connect,
@@ -173,6 +173,10 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
         toggleVideo,
         isMuted,
         isVideoEnabled,
+        activeSpeakers,
+        currentChannelId,
+        currentServerId,
+        error,
       }}
     >
       {children}
@@ -183,7 +187,7 @@ export function WebRTCProvider({ children }: { children: React.ReactNode }) {
 export function useWebRTC() {
   const context = useContext(WebRTCContext)
   if (!context) {
-    throw new Error("useWebRTC muss innerhalb eines WebRTCProviders verwendet werden")
+    throw new Error("useWebRTC must be used within a WebRTCProvider")
   }
   return context
 }

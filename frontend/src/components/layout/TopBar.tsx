@@ -18,12 +18,23 @@ import {
 } from "../ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
 import { serverService } from "@/services/server"
+import VoiceStatus from "../VoiceStatus"
 
 export default function TopBar() {
   const { serverId } = useParams()
   const navigate = useNavigate()
   const { logout } = useAuth()
-  const { isConnected, toggleMute, toggleVideo, isMuted, isVideoEnabled, connect, disconnect } = useWebRTC()
+  const {
+    isConnected,
+    isConnecting,
+    toggleMute,
+    isMuted,
+    isVideoEnabled,
+    connect,
+    disconnect,
+    currentChannelId,
+    activeSpeakers,
+  } = useWebRTC()
   const [isDeafened, setIsDeafened] = useState(false)
   const [serverName, setServerName] = useState<string | null>(null)
   const { theme, setTheme } = useTheme()
@@ -59,8 +70,11 @@ export default function TopBar() {
     if (isConnected) {
       disconnect()
     } else {
+      // Find the first voice channel in the server
+      const voiceChannelId = "4" // This would normally come from your channel list
       try {
-        await connect(serverId)
+        await connect(serverId, voiceChannelId)
+        navigate(`/server/${serverId}?channel=${voiceChannelId}&tab=voice`)
       } catch (error) {
         console.error("Failed to connect to voice:", error)
       }
@@ -74,6 +88,16 @@ export default function TopBar() {
           {serverName && <div className="mr-auto font-semibold">{serverName}</div>}
 
           <div className="ml-auto flex items-center space-x-2">
+            <VoiceStatus className="mr-2" />
+            {isConnected && (
+              <div className="flex items-center gap-2 px-2 py-1 bg-muted/30 rounded-md mr-2">
+                <span className="h-2 w-2 rounded-full bg-green-500"></span>
+                <span className="text-xs text-muted-foreground">Voice Connected</span>
+                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" onClick={toggleMute}>
+                  {isMuted ? <MicOff className="h-3 w-3 text-red-500" /> : <Mic className="h-3 w-3" />}
+                </Button>
+              </div>
+            )}
             {serverId && (
               <>
                 <Tooltip>

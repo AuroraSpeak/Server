@@ -3,20 +3,19 @@
 import { createContext, useContext, useState, type ReactNode } from "react"
 
 interface AppContextType {
-  isDarkMode: boolean
-  toggleDarkMode: () => void
+  isLoading: boolean
+  setIsLoading: (loading: boolean) => void
+  error: string | null
+  setError: (error: string | null) => void
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [isDarkMode, setIsDarkMode] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode)
-  }
-
-  return <AppContext.Provider value={{ isDarkMode, toggleDarkMode }}>{children}</AppContext.Provider>
+  return <AppContext.Provider value={{ isLoading, setIsLoading, error, setError }}>{children}</AppContext.Provider>
 }
 
 export function useApp() {

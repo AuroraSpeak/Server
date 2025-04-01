@@ -14,14 +14,14 @@ document.documentElement.classList.add("dark")
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider defaultTheme="dark" storageKey="aura-theme">
-      <AuthProvider>
-        <WebRTCProvider>
-          <AppProvider>
+      <AppProvider>
+        <AuthProvider>
+          <WebRTCProvider>
             <App />
-            <Toaster position="top-right" />
-          </AppProvider>
-        </WebRTCProvider>
-      </AuthProvider>
+          </WebRTCProvider>
+        </AuthProvider>
+      </AppProvider>
+      <Toaster position="top-right" />
     </ThemeProvider>
   </React.StrictMode>,
 )

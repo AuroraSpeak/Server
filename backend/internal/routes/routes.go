@@ -3,12 +3,15 @@ package routes
 import (
 	"github.com/auraspeak/backend/internal/handlers"
 	"github.com/auraspeak/backend/internal/middleware"
+	"github.com/auraspeak/backend/internal/websocket"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/websocket/v2"
 )
 
-func SetupRoutes(app *fiber.App, handlers *handlers.Handlers) {
+func SetupRoutes(app *fiber.App, handlers *handlers.Handlers, wsHub *websocket.Hub) {
+	// WebSocket routes müssen vor allen anderen Routen konfiguriert werden
+	websocket.SetupWebSocketRoutes(app, wsHub)
+
 	// Public routes
 	app.Post("/api/auth/register", handlers.Auth.Register)
 	app.Post("/api/auth/login", handlers.Auth.Login)
@@ -45,7 +48,4 @@ func SetupRoutes(app *fiber.App, handlers *handlers.Handlers) {
 	api.Post("/webrtc/offer", handlers.WebRTC.CreateOffer)
 	api.Post("/webrtc/answer", handlers.WebRTC.CreateAnswer)
 	api.Post("/webrtc/ice-candidate", handlers.WebRTC.AddICECandidate)
-
-	// WebSocket route
-	api.Get("/ws", websocket.New(handlers.WebRTC.HandleWebSocket))
 }

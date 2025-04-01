@@ -7,7 +7,6 @@ import Login from "./pages/Login"
 import Register from "./pages/Register"
 import Dashboard from "./pages/Dashboard"
 import ServerView from "./pages/ServerView"
-import { Toaster } from "./components/ui/sonner"
 
 function App() {
   const { isAuthenticated } = useAuth()
@@ -20,7 +19,6 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
-        <Toaster />
       </div>
     )
   }
@@ -38,14 +36,13 @@ function App() {
           </Routes>
         </main>
       </div>
-      <Toaster />
     </div>
   )
 }
 
 export default function AppWrapper() {
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   )

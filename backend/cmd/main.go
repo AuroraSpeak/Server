@@ -8,6 +8,7 @@ import (
 	"github.com/auraspeak/backend/internal/models"
 	"github.com/auraspeak/backend/internal/routes"
 	"github.com/auraspeak/backend/internal/services"
+	"github.com/auraspeak/backend/internal/websocket"
 
 	"github.com/joho/godotenv"
 )
@@ -46,6 +47,10 @@ func main() {
 		log.Fatalf("Failed to initialize WebRTC service: %v", err)
 	}
 
+	// Initialize WebSocket Hub
+	wsHub := websocket.NewHub()
+	go wsHub.Run()
+
 	// Initialize local TURN server if enabled
 	var turnService *services.TURNService
 	if cfg.LocalTURN.Enabled {
@@ -79,7 +84,7 @@ func main() {
 	server.SetupMiddleware()
 
 	// Setup routes
-	routes.SetupRoutes(server.App(), h)
+	routes.SetupRoutes(server.App(), h, wsHub)
 
 	// Start server
 	if err := server.Start(); err != nil {
