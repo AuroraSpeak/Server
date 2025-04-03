@@ -26,6 +26,6 @@ func NewHandlers(
 		Server:  NewServerHandler(serverService),
 		Channel: NewChannelHandler(channelService, serverService),
 		Message: NewMessageHandler(messageService, serverService),
-		WebRTC:  NewWebRTCHandler(db, webrtcService),
+		WebRTC:  NewWebRTCHandler(webrtcService),
 	}
 }

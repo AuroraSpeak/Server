@@ -37,9 +37,20 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Initialize Redis cache
+	cache, err := services.NewCacheService(
+		cfg.Redis.Addr,
+		cfg.Redis.Password,
+		cfg.Redis.DB,
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize Redis cache: %v", err)
+		cache = nil // Cache wird deaktiviert
+	}
+
 	// Initialize services
 	authService := services.NewAuthService(db, cfg.JWTSecret)
-	serverService := services.NewServerService(db)
+	serverService := services.NewServerService(db, cache)
 	channelService := services.NewChannelService(db)
 	messageService := services.NewMessageService(db)
 	webrtcService, err := services.NewWebRTCService(db, cfg)
@@ -84,7 +95,7 @@ func main() {
 	server.SetupMiddleware()
 
 	// Setup routes
-	routes.SetupRoutes(server.App(), h, wsHub)
+	routes.SetupRoutes(server.App(), h, wsHub, authService)
 
 	// Start server
 	if err := server.Start(); err != nil {

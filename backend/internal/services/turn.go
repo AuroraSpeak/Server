@@ -22,9 +22,9 @@ type TURNService struct {
 
 func NewTURNService(cfg *config.Config) (*TURNService, error) {
 	// Erstelle UDP-Listener für TURN
-	udpListener, err := net.ListenPacket("udp4", fmt.Sprintf("0.0.0.0:%d", cfg.LocalTURN.Port))
+	tcpListener, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", cfg.LocalTURN.Port))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create UDP listener: %w", err)
+		return nil, fmt.Errorf("failed to create TCP listener: %w", err)
 	}
 
 	// Erstelle TURN-Server mit verbesserter Authentifizierung
@@ -47,23 +47,13 @@ func NewTURNService(cfg *config.Config) (*TURNService, error) {
 		},
 		ListenerConfigs: []turn.ListenerConfig{
 			{
-				Listener: udpListener,
-				RelayProtocols: []turn.Protocol{
-					turn.UDP,
+				Listener: tcpListener,
+				RelayAddressGenerator: &turn.RelayAddressGeneratorStatic{
+					RelayAddress: net.ParseIP(cfg.LocalTURN.PublicIP),
+					Address:      "0.0.0.0",
 				},
 			},
 		},
-		// Rate Limiting
-		RateLimit: turn.RateLimit{
-			MaxRequestsPerSecond: 10,
-			MaxBurstSize:         20,
-		},
-		// Verbindungslimits
-		ConnectionTimeout: 30 * time.Second,
-		MaxConnections:    1000,
-		// Sicherheitseinstellungen
-		AllowLoopback: false, // Verhindert Verbindungen von localhost
-		NoAuth:        false, // Erfordert immer Authentifizierung
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TURN server: %w", err)
@@ -77,15 +67,12 @@ func NewTURNService(cfg *config.Config) (*TURNService, error) {
 }
 
 func (s *TURNService) Start() error {
-	return s.server.Start()
+	// Der Server startet automatisch bei der Erstellung
+	return nil
 }
 
 func (s *TURNService) Stop() error {
 	return s.server.Close()
-}
-
-func (s *TURNService) GetTURNConfig() turn.ServerConfig {
-	return s.server.Config()
 }
 
 // Generiert ein temporäres Passwort für die TURN-Authentifizierung

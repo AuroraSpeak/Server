@@ -1,0 +1,15 @@
+stateDiagram-v2
+    [*] --> Initialized: initialize()
+    Initialized --> Connecting: connect()
+    Connecting --> Connected: WebSocket Connected
+    Connected --> CallInitiated: initiateCall()
+    CallInitiated --> Negotiating: Offer/Answer Exchange
+    Negotiating --> ICEGathering: ICE Candidates
+    ICEGathering --> Connected: Connection Established
+    Connected --> [*]: endCall()
+    
+    state Connected {
+        [*] --> Active
+        Active --> Muted: toggleMute()
+        Muted --> Active: toggleMute()
+    } 

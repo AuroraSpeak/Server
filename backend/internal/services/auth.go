@@ -86,3 +86,12 @@ func (s *AuthService) ValidateToken(tokenString string) (jwt.MapClaims, error) {
 
 	return claims, nil
 }
+
+func (s *AuthService) IsMember(serverID string, userID uint) (bool, error) {
+	var count int64
+	err := s.db.Model(&models.Member{}).Where("server_id = ? AND user_id = ?", serverID, userID).Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

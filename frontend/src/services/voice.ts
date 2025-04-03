@@ -1,271 +1,188 @@
 import { WebRTCService } from "./webrtc.service"
 import { WebSocketService } from "./websocket.service"
 
-// Eigene EventEmitter-Implementierung für Browser-Kompatibilität
-class BrowserEventEmitter {
-  private listeners: { [event: string]: Function[] } = {};
-
-  on(event: string, callback: Function) {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
-    this.listeners[event].push(callback);
-    return this;
-  }
-
-  emit(event: string, ...args: any[]): boolean {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(...args));
-      return true;
-    }
-    return false;
-  }
-
-  removeListener(event: string, callback: Function) {
-    if (this.listeners[event]) {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    }
-    return this;
-  }
+export interface SpeakingState {
+  userId: string
+  isSpeaking: boolean
 }
 
-export interface VoiceCall {
-  id: string
-  targetUserId: string
-  status: "connecting" | "active" | "ended"
-  startTime: Date
-  endTime?: Date
+export interface CallStatus {
+  isInCall: boolean
+  channelId: string | null
+  participants: string[]
 }
 
-// Define event types for better type safety
-interface VoiceServiceEvents {
-  remoteStream: (stream: MediaStream, userId: string) => void
-  iceCandidate: (candidate: RTCIceCandidateInit) => void
-  speakingStateChanged: (data: { userId: string; isSpeaking: boolean }) => void
-  callStatusChanged: (call: VoiceCall) => void
-}
+export class VoiceService {
+  private localStream: MediaStream | null = null
+  private remoteStream: MediaStream | null = null
+  private isConnected = false
+  private speakingStateCallback: ((state: SpeakingState) => void) | null = null
+  private currentChannel: string | null = null
 
-// Properly extend BrowserEventEmitter with typed events
-class VoiceService extends BrowserEventEmitter {
-  private webrtcService: WebRTCService | null = null
-  private websocketService: WebSocketService | null = null
-  private currentCall: VoiceCall | null = null
-  private audioContext: AudioContext | null = null
-  private audioAnalysers: Map<string, AnalyserNode> = new Map()
-  private activeSpeakers: Set<string> = new Set()
-  private speakerDetectionInterval: number | null = null
-
-  constructor() {
-    super() // Call BrowserEventEmitter constructor
+  constructor(
+    private webrtcService: WebRTCService,
+    private wsService: WebSocketService
+  ) {
+    this.wsService.on('speaking-state', (state: unknown) => {
+      if (this.isSpeakingState(state)) {
+        this.notifySpeakingState(state)
+      }
+    })
   }
 
-  async initiateCall(targetUserId: string): Promise<VoiceCall> {
+  private isSpeakingState(state: unknown): state is SpeakingState {
+    return (
+      typeof state === 'object' &&
+      state !== null &&
+      'userId' in state &&
+      'isSpeaking' in state &&
+      typeof (state as SpeakingState).userId === 'string' &&
+      typeof (state as SpeakingState).isSpeaking === 'boolean'
+    )
+  }
+
+  private notifySpeakingState(state: SpeakingState): void {
+    if (this.speakingStateCallback) {
+      this.speakingStateCallback(state)
+    }
+  }
+
+  async connectToServer(serverId: string) {
     try {
-      // Initialize WebRTC service
-      this.webrtcService = new WebRTCService()
-      await this.webrtcService.initialize()
+      this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      await this.webrtcService.createPeerConnection(serverId)
+      this.isConnected = true
+    } catch (err) {
+      console.error("Fehler beim Verbinden mit dem Server:", err)
+      throw err
+    }
+  }
 
-      // Initialize WebSocket service
-      this.websocketService = new WebSocketService(this.webrtcService)
-      this.websocketService.connect()
-
-      // Create a new call object
-      this.currentCall = {
-        id: crypto.randomUUID(),
-        targetUserId,
-        status: "connecting",
-        startTime: new Date(),
+  async joinChannel(channelId: string) {
+    try {
+      if (!this.isConnected) {
+        throw new Error("Nicht mit dem Server verbunden")
       }
 
-      // Set up event listeners
-      this.setupEventListeners()
+      this.currentChannel = channelId
+      this.wsService.sendMessage({
+        type: "join-channel",
+        payload: { channelId }
+      })
+    } catch (err) {
+      console.error("Fehler beim Beitreten des Kanals:", err)
+      throw err
+    }
+  }
 
-      // Initiate the call
-      this.websocketService.initiateCall(targetUserId)
-
-      // Set up audio analysis for local stream
-      if (this.webrtcService.getLocalStream()) {
-        this.setupAudioAnalysis("local", this.webrtcService.getLocalStream()!)
+  async leaveChannel() {
+    try {
+      if (this.currentChannel) {
+        this.wsService.sendMessage({
+          type: "leave-channel",
+          payload: { channelId: this.currentChannel }
+        })
+        this.currentChannel = null
       }
+    } catch (err) {
+      console.error("Fehler beim Verlassen des Kanals:", err)
+      throw err
+    }
+  }
 
-      return this.currentCall
+  async disconnectFromServer() {
+    try {
+      if (this.currentChannel) {
+        await this.leaveChannel()
+      }
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(track => track.stop())
+        this.localStream = null
+      }
+      this.isConnected = false
+    } catch (err) {
+      console.error("Fehler beim Trennen der Verbindung:", err)
+      throw err
+    }
+  }
+
+  async startCall(serverId: string): Promise<void> {
+    try {
+      if (!this.localStream) {
+        this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        this.webrtcService.setLocalStream(this.localStream)
+      }
+      await this.webrtcService.createPeerConnection(serverId)
     } catch (error) {
-      console.error("Error initiating call:", error)
+      console.error("Fehler beim Starten des Anrufs:", error)
       throw error
     }
   }
 
-  private setupEventListeners() {
-    if (!this.webrtcService) return
+  async endCall(): Promise<void> {
+    try {
+      await this.webrtcService.endCall()
+      this.stopLocalStream()
+      this.stopRemoteStream()
+    } catch (error) {
+      console.error("Fehler beim Beenden des Anrufs:", error)
+      throw error
+    }
+  }
 
-    // Listen for remote stream
-    this.webrtcService.on("remoteStream", (stream: MediaStream, userId: string) => {
-      // Set up audio analysis for remote stream
-      this.setupAudioAnalysis(userId, stream)
-
-      // Emit the remote stream event
-      this.emit("remoteStream", stream, userId)
-    })
-
-    // Listen for connection state changes
-    this.webrtcService.on("connectionStateChange", (state: string, userId: string) => {
-      if (state === "connected" && this.currentCall) {
-        this.currentCall.status = "active"
-        this.emit("callStatusChanged", this.currentCall)
+  async toggleMute(): Promise<void> {
+    if (this.localStream) {
+      const audioTrack = this.localStream.getAudioTracks()[0]
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled
+        this.notifySpeakingState({
+          userId: 'local',
+          isSpeaking: !audioTrack.enabled
+        })
       }
-    })
-
-    // Listen for ICE candidates
-    this.webrtcService.on("iceCandidate", (candidate: RTCIceCandidateInit) => {
-      this.emit("iceCandidate", candidate)
-    })
-  }
-
-  private setupAudioAnalysis(userId: string, stream: MediaStream) {
-    if (!this.audioContext) {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
     }
-
-    const audioTracks = stream.getAudioTracks()
-    if (audioTracks.length === 0) return
-
-    const audioSource = this.audioContext.createMediaStreamSource(stream)
-    const analyser = this.audioContext.createAnalyser()
-    analyser.fftSize = 256
-    analyser.smoothingTimeConstant = 0.5
-    audioSource.connect(analyser)
-
-    this.audioAnalysers.set(userId, analyser)
-
-    // Start speaker detection if not already running
-    if (!this.speakerDetectionInterval) {
-      this.startSpeakerDetection()
-    }
-  }
-
-  private startSpeakerDetection() {
-    // Clear any existing interval
-    if (this.speakerDetectionInterval) {
-      window.clearInterval(this.speakerDetectionInterval)
-    }
-
-    // Check audio levels every 100ms
-    this.speakerDetectionInterval = window.setInterval(() => {
-      this.audioAnalysers.forEach((analyser, userId) => {
-        const bufferLength = analyser.frequencyBinCount
-        const dataArray = new Uint8Array(bufferLength)
-        analyser.getByteFrequencyData(dataArray)
-
-        // Calculate average volume
-        let sum = 0
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i]
-        }
-        const average = sum / bufferLength
-
-        // Consider as speaking if above threshold
-        const SPEAKING_THRESHOLD = 20
-        const isSpeaking = average > SPEAKING_THRESHOLD
-
-        if (isSpeaking && !this.activeSpeakers.has(userId)) {
-          this.activeSpeakers.add(userId)
-          this.emit("speakingStateChanged", { userId, isSpeaking: true })
-        } else if (!isSpeaking && this.activeSpeakers.has(userId)) {
-          this.activeSpeakers.delete(userId)
-          this.emit("speakingStateChanged", { userId, isSpeaking: false })
-        }
-      })
-    }, 100)
-  }
-
-  async endCall() {
-    if (this.currentCall) {
-      this.currentCall.status = "ended"
-      this.currentCall.endTime = new Date()
-    }
-
-    // Stop speaker detection
-    if (this.speakerDetectionInterval) {
-      window.clearInterval(this.speakerDetectionInterval)
-      this.speakerDetectionInterval = null
-    }
-
-    // Close audio context
-    if (this.audioContext) {
-      await this.audioContext.close().catch(console.error)
-      this.audioContext = null
-    }
-
-    // Clear audio analysers
-    this.audioAnalysers.clear()
-    this.activeSpeakers.clear()
-
-    // Stop WebRTC
-    if (this.webrtcService) {
-      this.webrtcService.stopCall()
-      this.webrtcService = null
-    }
-
-    // Disconnect WebSocket
-    if (this.websocketService) {
-      this.websocketService.disconnect()
-      this.websocketService = null
-    }
-
-    this.currentCall = null
-  }
-
-  getCurrentCall(): VoiceCall | null {
-    return this.currentCall
-  }
-
-  toggleMute(): boolean {
-    if (!this.webrtcService) return false
-
-    const localStream = this.webrtcService.getLocalStream()
-    if (!localStream) return false
-
-    const audioTracks = localStream.getAudioTracks()
-    if (audioTracks.length === 0) return false
-
-    const track = audioTracks[0]
-    track.enabled = !track.enabled
-
-    return !track.enabled // Return true if muted
   }
 
   isMuted(): boolean {
-    if (!this.webrtcService) return true
-
-    const localStream = this.webrtcService.getLocalStream()
-    if (!localStream) return true
-
-    const audioTracks = localStream.getAudioTracks()
-    if (audioTracks.length === 0) return true
-
-    return !audioTracks[0].enabled
+    if (this.localStream) {
+      const audioTrack = this.localStream.getAudioTracks()[0]
+      return audioTrack ? !audioTrack.enabled : false
+    }
+    return false
   }
 
-  getActiveSpeakers(): Set<string> {
-    return new Set(this.activeSpeakers)
+  getLocalStream(): MediaStream | null {
+    return this.localStream
   }
 
-  onRemoteStream(callback: (stream: MediaStream, userId: string) => void) {
-    this.on("remoteStream", callback)
+  getRemoteStreams(): MediaStream[] {
+    return this.remoteStream ? [this.remoteStream] : []
   }
 
-  onIceCandidate(callback: (candidate: RTCIceCandidateInit) => void) {
-    this.on("iceCandidate", callback)
+  setSpeakingStateCallback(callback: (state: SpeakingState) => void) {
+    this.speakingStateCallback = callback
   }
 
-  onSpeakingStateChanged(callback: (data: { userId: string; isSpeaking: boolean }) => void) {
-    this.on("speakingStateChanged", callback)
+  getCallStatus(): CallStatus {
+    return {
+      isInCall: !!this.currentChannel,
+      channelId: this.currentChannel,
+      participants: [] // Wird vom Server verwaltet
+    }
   }
 
-  onCallStatusChanged(callback: (call: VoiceCall) => void) {
-    this.on("callStatusChanged", callback)
+  private stopLocalStream() {
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop())
+      this.localStream = null
+    }
+  }
+
+  private stopRemoteStream() {
+    if (this.remoteStream) {
+      this.remoteStream.getTracks().forEach((track) => track.stop())
+      this.remoteStream = null
+    }
   }
 }
-
-export const voiceService = new VoiceService()
 

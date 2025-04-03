@@ -20,6 +20,7 @@ services:
       WATCHPACK_POLLING: "true"
       VITE_DEV_SERVER_HOST: "0.0.0.0"
       VITE_DEV_SERVER_PORT: "3000"
+    command: pnpm install && pnpm dev
     depends_on:
       - backend
     networks:
@@ -58,10 +59,15 @@ services:
       DB_USER: ${POSTGRES_USER:-postgres}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DB_NAME: ${POSTGRES_DB:-auraspeak}
-      ALLOWED_ORIGINS: http://localhost:3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      ALLOWED_ORIGINS: http://localhost:3000,ws://localhost:8080
       GO_ENV: development
+      ENABLE_WEBSOCKET: "true"
     depends_on:
       - postgres
+      - redis
     networks:
       - app-network
     develop:
@@ -86,6 +92,23 @@ services:
     networks:
       - app-network
 
+  # Redis Service
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # pgAdmin Service
   pgadmin:
     image: dpage/pgadmin4
@@ -108,3 +131,4 @@ networks:
 volumes:
   postgres-data:
   pgadmin-data:
+  redis-data:

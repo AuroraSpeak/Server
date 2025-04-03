@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/auraspeak/backend/internal/config"
 	"github.com/auraspeak/backend/internal/models"
@@ -14,96 +15,120 @@ import (
 	"gorm.io/gorm"
 )
 
-type WebRTCClient struct {
-	Conn     *websocket.Conn
-	ServerID string
+type OfferRequest struct {
+	ClientID string `json:"clientId"`
+	SDP      string `json:"sdp"`
 }
 
-type WebRTCMessage struct {
-	Type     string          `json:"type"`
-	From     string          `json:"from"`
-	To       string          `json:"to"`
-	Data     json.RawMessage `json:"data"`
-	ServerID string          `json:"serverId"`
+type ICECandidateRequest struct {
+	ClientID  string `json:"clientId"`
+	Candidate string `json:"candidate"`
 }
 
 type WebRTCService struct {
 	db              *gorm.DB
-	peerConnections map[string]*webrtc.PeerConnection
-	mu              sync.RWMutex
 	api             *webrtc.API
-	config          *config.Config
-	connections     map[string]*ServerConnections
+	config          *webrtc.Configuration
+	peerConnections map[string]*webrtc.PeerConnection
+	connections     map[string]time.Time
 	clients         map[string]*WebRTCClient
 	clientsMux      sync.RWMutex
+	stopChan        chan struct{}
+}
+
+type WebRTCClient struct {
+	Conn     *websocket.Conn
+	ServerID string
+	UserID   string
 }
 
 type ServerConnections struct {
-	// Speichert aktive Peer-Verbindungen pro Server
 	peers map[string]*PeerConnection
 	mu    sync.RWMutex
 }
 
 type PeerConnection struct {
-	conn *webrtc.PeerConnection
-	// Speichert die Audio-Sender
-	audioTrack *webrtc.TrackLocalStaticSample
-	// Speichert die Audio-Empfänger
+	conn           *webrtc.PeerConnection
+	audioTrack     *webrtc.TrackLocalStaticSample
 	audioReceivers map[string]*webrtc.RTPReceiver
+	lastActivity   time.Time
 	mu             sync.RWMutex
 }
 
-type OfferRequest struct {
-	ChannelID uint `json:"channelId"`
-	Offer     webrtc.SessionDescription
-}
-
-type ICECandidateRequest struct {
-	ChannelID uint `json:"channelId"`
-	Candidate webrtc.ICECandidateInit
+type WebRTCMessage struct {
+	Type      string                     `json:"type"`
+	From      string                     `json:"from"`
+	To        string                     `json:"to"`
+	ServerID  string                     `json:"serverId"`
+	Offer     *webrtc.SessionDescription `json:"offer,omitempty"`
+	Answer    *webrtc.SessionDescription `json:"answer,omitempty"`
+	Candidate *webrtc.ICECandidateInit   `json:"candidate,omitempty"`
+	Payload   json.RawMessage            `json:"payload,omitempty"`
 }
 
 func NewWebRTCService(db *gorm.DB, cfg *config.Config) (*WebRTCService, error) {
-	// Erstelle WebRTC API mit STUN/TURN Konfiguration
-	webrtcConfig := webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{},
+	config := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+			{
+				URLs:       []string{"turn:openrelay.metered.ca:80"},
+				Username:   "openrelayproject",
+				Credential: "openrelayproject",
+			},
+		},
+		ICETransportPolicy:   webrtc.ICETransportPolicyAll,
+		BundlePolicy:         webrtc.BundlePolicyMaxBundle,
+		RTCPMuxPolicy:        webrtc.RTCPMuxPolicyRequire,
+		ICECandidatePoolSize: 10,
 	}
 
-	// Füge STUN Server hinzu
-	for _, stunServer := range cfg.STUNServers {
-		webrtcConfig.ICEServers = append(webrtcConfig.ICEServers, webrtc.ICEServer{
-			URLs: []string{stunServer},
-		})
-	}
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(&webrtc.MediaEngine{}))
 
-	// Füge TURN Server hinzu
-	for _, turnServer := range cfg.TURNServers {
-		webrtcConfig.ICEServers = append(webrtcConfig.ICEServers, webrtc.ICEServer{
-			URLs:       []string{turnServer.URL},
-			Username:   turnServer.Username,
-			Credential: turnServer.Password,
-		})
-	}
-
-	// Füge lokalen TURN Server hinzu, wenn aktiviert
-	if cfg.LocalTURN.Enabled {
-		webrtcConfig.ICEServers = append(webrtcConfig.ICEServers, webrtc.ICEServer{
-			URLs:       []string{fmt.Sprintf("turn:%s:%d", cfg.LocalTURN.PublicIP, cfg.LocalTURN.Port)},
-			Username:   cfg.LocalTURN.Username,
-			Credential: cfg.LocalTURN.Password,
-		})
-	}
-
-	api := webrtc.NewAPI(webrtc.WithSettingEngine(webrtc.SettingEngine{}))
-
-	return &WebRTCService{
+	service := &WebRTCService{
 		db:              db,
-		peerConnections: make(map[string]*webrtc.PeerConnection),
 		api:             api,
-		config:          cfg,
-		connections:     make(map[string]*ServerConnections),
+		config:          &config,
+		peerConnections: make(map[string]*webrtc.PeerConnection),
+		connections:     make(map[string]time.Time),
 		clients:         make(map[string]*WebRTCClient),
-	}, nil
+		stopChan:        make(chan struct{}),
+	}
+
+	go service.startCleanupRoutine()
+	return service, nil
+}
+
+func (s *WebRTCService) startCleanupRoutine() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			s.cleanupInactiveConnections()
+		}
+	}
+}
+
+func (s *WebRTCService) cleanupInactiveConnections() {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
+
+	now := time.Now()
+	for clientID, lastSeen := range s.connections {
+		if now.Sub(lastSeen) > 5*time.Minute {
+			if pc, exists := s.peerConnections[clientID]; exists {
+				pc.Close()
+				delete(s.peerConnections, clientID)
+			}
+			delete(s.connections, clientID)
+			log.Printf("Inaktive Verbindung entfernt: %s", clientID)
+		}
+	}
 }
 
 func (s *WebRTCService) GetChannel(channelID uint) (*models.Channel, error) {
@@ -127,166 +152,238 @@ func (s *WebRTCService) IsMember(serverID uint, userID uint) (bool, error) {
 }
 
 func (s *WebRTCService) CreateOffer(req OfferRequest) (*webrtc.SessionDescription, error) {
-	// Implementierung folgt
-	return nil, nil
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
+
+	pc, exists := s.peerConnections[req.ClientID]
+	if !exists {
+		var err error
+		pc, err = s.CreatePeerConnection(req.ClientID)
+		if err != nil {
+			return nil, fmt.Errorf("Fehler beim Erstellen der PeerConnection: %v", err)
+		}
+	}
+
+	offer, err := pc.CreateOffer(nil)
+	if err != nil {
+		return nil, fmt.Errorf("Fehler beim Erstellen des Angebots: %v", err)
+	}
+
+	if err := pc.SetLocalDescription(offer); err != nil {
+		return nil, fmt.Errorf("Fehler beim Setzen der Local Description: %v", err)
+	}
+
+	s.connections[req.ClientID] = time.Now()
+	return &offer, nil
 }
 
 func (s *WebRTCService) CreateAnswer(req OfferRequest) (*webrtc.SessionDescription, error) {
-	// Implementierung folgt
-	return nil, nil
-}
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
 
-func (s *WebRTCService) AddICECandidate(req ICECandidateRequest) error {
-	// Implementierung folgt
-	return nil
-}
-
-// Erstellt eine neue Peer-Verbindung für einen Server
-func (s *WebRTCService) CreatePeerConnection(serverID string, userID string) (*webrtc.PeerConnection, error) {
-	s.mu.Lock()
-	serverConn, exists := s.connections[serverID]
+	pc, exists := s.peerConnections[req.ClientID]
 	if !exists {
-		serverConn = &ServerConnections{
-			peers: make(map[string]*PeerConnection),
-		}
-		s.connections[serverID] = serverConn
-	}
-	s.mu.Unlock()
-
-	serverConn.mu.Lock()
-	defer serverConn.mu.Unlock()
-
-	// Erstelle neue Peer-Verbindung
-	peerConn, err := s.api.NewPeerConnection(webrtc.Configuration{
-		ICEServers: []webrtc.ICEServer{
-			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
-			},
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create peer connection: %w", err)
-	}
-
-	// Erstelle Audio-Track
-	audioTrack, err := webrtc.NewTrackLocalStaticSample(webrtc.RTPCodecCapability{MimeType: "audio/opus"}, "audio", "pion")
-	if err != nil {
-		peerConn.Close()
-		return nil, fmt.Errorf("failed to create audio track: %w", err)
-	}
-
-	// Füge Audio-Track zur Peer-Verbindung hinzu
-	_, err = peerConn.AddTrack(audioTrack)
-	if err != nil {
-		peerConn.Close()
-		return nil, fmt.Errorf("failed to add audio track: %w", err)
-	}
-
-	// Speichere Peer-Verbindung
-	serverConn.peers[userID] = &PeerConnection{
-		conn:           peerConn,
-		audioTrack:     audioTrack,
-		audioReceivers: make(map[string]*webrtc.RTPReceiver),
-	}
-
-	return peerConn, nil
-}
-
-// Verarbeitet ein Angebot von einem Client
-func (s *WebRTCService) HandleOffer(serverID string, userID string, offer webrtc.SessionDescription) (*webrtc.SessionDescription, error) {
-	s.mu.RLock()
-	serverConn, exists := s.connections[serverID]
-	s.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("server not found")
-	}
-
-	serverConn.mu.RLock()
-	peer, exists := serverConn.peers[userID]
-	serverConn.mu.RUnlock()
-
-	if !exists {
-		// Erstelle neue Peer-Verbindung
-		_, err := s.CreatePeerConnection(serverID, userID)
+		var err error
+		pc, err = s.CreatePeerConnection(req.ClientID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("Fehler beim Erstellen der PeerConnection: %v", err)
 		}
-		serverConn.mu.RLock()
-		peer = serverConn.peers[userID]
-		serverConn.mu.RUnlock()
 	}
 
-	// Setze Remote-Beschreibung
-	if err := peer.conn.SetRemoteDescription(offer); err != nil {
-		return nil, fmt.Errorf("failed to set remote description: %w", err)
+	offer := webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  req.SDP,
 	}
 
-	// Erstelle Antwort
-	answer, err := peer.conn.CreateAnswer(nil)
+	if err := pc.SetRemoteDescription(offer); err != nil {
+		return nil, fmt.Errorf("Fehler beim Setzen der Remote Description: %v", err)
+	}
+
+	answer, err := pc.CreateAnswer(nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create answer: %w", err)
+		return nil, fmt.Errorf("Fehler beim Erstellen der Antwort: %v", err)
 	}
 
-	// Setze lokale Beschreibung
-	if err := peer.conn.SetLocalDescription(answer); err != nil {
-		return nil, fmt.Errorf("failed to set local description: %w", err)
+	if err := pc.SetLocalDescription(answer); err != nil {
+		return nil, fmt.Errorf("Fehler beim Setzen der Local Description: %v", err)
 	}
 
+	s.connections[req.ClientID] = time.Now()
 	return &answer, nil
 }
 
-// Verarbeitet ICE-Kandidaten
-func (s *WebRTCService) HandleICECandidate(serverID string, userID string, candidate webrtc.ICECandidateInit) error {
-	s.mu.RLock()
-	serverConn, exists := s.connections[serverID]
-	s.mu.RUnlock()
+func (s *WebRTCService) AddICECandidate(req ICECandidateRequest) error {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
 
+	pc, exists := s.peerConnections[req.ClientID]
 	if !exists {
-		return fmt.Errorf("server not found")
+		return fmt.Errorf("Keine PeerConnection für Client %s gefunden", req.ClientID)
 	}
 
-	serverConn.mu.RLock()
-	peer, exists := serverConn.peers[userID]
-	serverConn.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("peer not found")
+	var iceCandidate webrtc.ICECandidateInit
+	if err := json.Unmarshal([]byte(req.Candidate), &iceCandidate); err != nil {
+		return fmt.Errorf("Fehler beim Parsen des ICE-Kandidaten: %v", err)
 	}
 
-	if err := peer.conn.AddICECandidate(candidate); err != nil {
-		return fmt.Errorf("failed to add ICE candidate: %w", err)
+	if err := pc.AddICECandidate(iceCandidate); err != nil {
+		return fmt.Errorf("Fehler beim Hinzufügen des ICE-Kandidaten: %v", err)
 	}
 
+	s.connections[req.ClientID] = time.Now()
 	return nil
 }
 
-// Schließt eine Peer-Verbindung
-func (s *WebRTCService) ClosePeerConnection(serverID string, userID string) error {
-	s.mu.RLock()
-	serverConn, exists := s.connections[serverID]
-	s.mu.RUnlock()
+func (s *WebRTCService) CreatePeerConnection(clientID string) (*webrtc.PeerConnection, error) {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
 
-	if !exists {
-		return fmt.Errorf("server not found")
+	if _, exists := s.peerConnections[clientID]; exists {
+		return nil, fmt.Errorf("PeerConnection für Client %s existiert bereits", clientID)
 	}
 
-	serverConn.mu.Lock()
-	defer serverConn.mu.Unlock()
-
-	peer, exists := serverConn.peers[userID]
-	if !exists {
-		return fmt.Errorf("peer not found")
+	pc, err := s.api.NewPeerConnection(*s.config)
+	if err != nil {
+		return nil, fmt.Errorf("Fehler beim Erstellen der PeerConnection: %v", err)
 	}
 
-	peer.conn.Close()
-	delete(serverConn.peers, userID)
+	s.peerConnections[clientID] = pc
+	s.connections[clientID] = time.Now()
 
-	// Wenn keine Peers mehr übrig sind, lösche den Server-Eintrag
-	if len(serverConn.peers) == 0 {
-		s.mu.Lock()
-		delete(s.connections, serverID)
-		s.mu.Unlock()
+	pc.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
+		log.Printf("ICE Verbindungsstatus für Client %s geändert: %s", clientID, state)
+	})
+
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		log.Printf("Verbindungsstatus für Client %s geändert: %s", clientID, state)
+	})
+
+	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate == nil {
+			return
+		}
+
+		candidateJSON, err := json.Marshal(candidate)
+		if err != nil {
+			log.Printf("Fehler beim Marshalling des ICE-Kandidaten: %v", err)
+			return
+		}
+
+		s.clientsMux.RLock()
+		if client, exists := s.clients[clientID]; exists {
+			if err := client.Conn.WriteJSON(WebRTCMessage{
+				Type:    "ice-candidate",
+				Payload: json.RawMessage(candidateJSON),
+			}); err != nil {
+				log.Printf("Fehler beim Senden des ICE-Kandidaten: %v", err)
+			}
+		}
+		s.clientsMux.RUnlock()
+	})
+
+	return pc, nil
+}
+
+func (s *WebRTCService) HandleOffer(clientID string, sdp string) (string, error) {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
+
+	pc, exists := s.peerConnections[clientID]
+	if !exists {
+		var err error
+		pc, err = s.CreatePeerConnection(clientID)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	offer := webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  sdp,
+	}
+
+	if err := pc.SetRemoteDescription(offer); err != nil {
+		return "", fmt.Errorf("Fehler beim Setzen der Remote Description: %v", err)
+	}
+
+	answer, err := pc.CreateAnswer(nil)
+	if err != nil {
+		return "", fmt.Errorf("Fehler beim Erstellen der Antwort: %v", err)
+	}
+
+	if err := pc.SetLocalDescription(answer); err != nil {
+		return "", fmt.Errorf("Fehler beim Setzen der Local Description: %v", err)
+	}
+
+	s.connections[clientID] = time.Now()
+	return answer.SDP, nil
+}
+
+func (s *WebRTCService) HandleAnswer(clientID string, sdp string) error {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
+
+	pc, exists := s.peerConnections[clientID]
+	if !exists {
+		return fmt.Errorf("Keine PeerConnection für Client %s gefunden", clientID)
+	}
+
+	answer := webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  sdp,
+	}
+
+	if err := pc.SetRemoteDescription(answer); err != nil {
+		return fmt.Errorf("Fehler beim Setzen der Remote Description: %v", err)
+	}
+
+	s.connections[clientID] = time.Now()
+	return nil
+}
+
+func (s *WebRTCService) HandleICECandidate(clientID string, candidate string) error {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
+
+	pc, exists := s.peerConnections[clientID]
+	if !exists {
+		return fmt.Errorf("Keine PeerConnection für Client %s gefunden", clientID)
+	}
+
+	var iceCandidate webrtc.ICECandidateInit
+	if err := json.Unmarshal([]byte(candidate), &iceCandidate); err != nil {
+		return fmt.Errorf("Fehler beim Parsen des ICE-Kandidaten: %v", err)
+	}
+
+	if err := pc.AddICECandidate(iceCandidate); err != nil {
+		return fmt.Errorf("Fehler beim Hinzufügen des ICE-Kandidaten: %v", err)
+	}
+
+	s.connections[clientID] = time.Now()
+	return nil
+}
+
+func (s *WebRTCService) ClosePeerConnection(clientID string) error {
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
+
+	pc, exists := s.peerConnections[clientID]
+	if !exists {
+		return nil
+	}
+
+	if err := pc.Close(); err != nil {
+		return fmt.Errorf("Fehler beim Schließen der PeerConnection: %v", err)
+	}
+
+	delete(s.peerConnections, clientID)
+	delete(s.connections, clientID)
+
+	if client, exists := s.clients[clientID]; exists {
+		if err := client.Conn.Close(); err != nil {
+			log.Printf("Fehler beim Schließen der Client-Verbindung: %v", err)
+		}
+		delete(s.clients, clientID)
 	}
 
 	return nil
@@ -296,14 +393,14 @@ func (s *WebRTCService) AddClient(client *WebRTCClient) {
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 	s.clients[client.ServerID] = client
-	log.Printf("Neuer WebRTC-Client verbunden: %s", client.ServerID)
+	log.Printf("Neuer WebRTC-Client verbunden: %s (User: %s)", client.ServerID, client.UserID)
 }
 
 func (s *WebRTCService) RemoveClient(client *WebRTCClient) {
 	s.clientsMux.Lock()
 	defer s.clientsMux.Unlock()
 	delete(s.clients, client.ServerID)
-	log.Printf("WebRTC-Client getrennt: %s", client.ServerID)
+	log.Printf("WebRTC-Client getrennt: %s (User: %s)", client.ServerID, client.UserID)
 }
 
 func (s *WebRTCService) HandleMessage(client *WebRTCClient, message []byte) {
@@ -314,6 +411,7 @@ func (s *WebRTCService) HandleMessage(client *WebRTCClient, message []byte) {
 	}
 
 	msg.ServerID = client.ServerID
+	msg.From = client.UserID
 
 	switch msg.Type {
 	case "offer":
@@ -322,6 +420,8 @@ func (s *WebRTCService) HandleMessage(client *WebRTCClient, message []byte) {
 		s.handleAnswer(msg)
 	case "candidate":
 		s.handleCandidate(msg)
+	case "disconnect":
+		s.handleDisconnect(msg)
 	default:
 		log.Printf("Unbekannter Nachrichtentyp: %s", msg.Type)
 	}
@@ -372,6 +472,20 @@ func (s *WebRTCService) handleCandidate(msg WebRTCMessage) {
 	}
 }
 
+func (s *WebRTCService) handleDisconnect(msg WebRTCMessage) {
+	s.clientsMux.RLock()
+	targetClient, exists := s.clients[msg.To]
+	s.clientsMux.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	if err := targetClient.Conn.WriteJSON(msg); err != nil {
+		log.Printf("Fehler beim Senden der Disconnect-Nachricht: %v", err)
+	}
+}
+
 func (s *WebRTCService) BroadcastToServer(serverID string, message interface{}) {
 	s.clientsMux.RLock()
 	defer s.clientsMux.RUnlock()
@@ -383,4 +497,26 @@ func (s *WebRTCService) BroadcastToServer(serverID string, message interface{}) 
 			}
 		}
 	}
+}
+
+func (s *WebRTCService) Close() {
+	close(s.stopChan)
+	s.clientsMux.Lock()
+	defer s.clientsMux.Unlock()
+
+	for _, pc := range s.peerConnections {
+		if err := pc.Close(); err != nil {
+			log.Printf("Fehler beim Schließen der PeerConnection: %v", err)
+		}
+	}
+
+	s.peerConnections = make(map[string]*webrtc.PeerConnection)
+	s.connections = make(map[string]time.Time)
+
+	for _, client := range s.clients {
+		if err := client.Conn.Close(); err != nil {
+			log.Printf("Fehler beim Schließen der Client-Verbindung: %v", err)
+		}
+	}
+	s.clients = make(map[string]*WebRTCClient)
 }

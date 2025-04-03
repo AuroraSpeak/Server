@@ -1,24 +1,31 @@
+import { fileURLToPath, URL } from "node:url"
 import { defineConfig } from "vite"
-import react from "@vitejs/plugin-react"
-import path from "path"
+import vue from "@vitejs/plugin-vue"
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [vue()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   server: {
-    port: 3000,
-    host: true,
+    port: 5173,
     proxy: {
       "/api": {
         target: "http://localhost:8080",
         changeOrigin: true,
-        secure: false,
+      },
+      "/ws": {
+        target: "ws://localhost:8080",
+        ws: true,
       },
     },
+  },
+  build: {
+    outDir: "dist",
+    assetsDir: "assets",
   },
 })
 

@@ -38,6 +38,11 @@ type Config struct {
 		AllowedIPs []string
 		DeniedIPs  []string
 	}
+	Redis struct {
+		Addr     string
+		Password string
+		DB       int
+	}
 }
 
 func LoadConfig() (*Config, error) {
@@ -107,6 +112,15 @@ func LoadConfig() (*Config, error) {
 			},
 			AllowedIPs: []string{}, // Leer bedeutet alle IPs erlaubt
 			DeniedIPs:  []string{}, // Leer bedeutet keine IPs blockiert
+		},
+		Redis: struct {
+			Addr     string
+			Password string
+			DB       int
+		}{
+			Addr:     getEnvOrDefault("REDIS_ADDR", "localhost:6379"),
+			Password: getEnvOrDefault("REDIS_PASSWORD", ""),
+			DB:       0,
 		},
 	}
 

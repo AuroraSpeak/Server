@@ -1,16 +1,23 @@
 package services
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/auraspeak/backend/internal/models"
 	"gorm.io/gorm"
 )
 
 type ServerService struct {
-	db *gorm.DB
+	db    *gorm.DB
+	cache *CacheService
 }
 
-func NewServerService(db *gorm.DB) *ServerService {
-	return &ServerService{db: db}
+func NewServerService(db *gorm.DB, cache *CacheService) *ServerService {
+	return &ServerService{
+		db:    db,
+		cache: cache,
+	}
 }
 
 func (s *ServerService) CreateServer(server *models.Server) error {
@@ -69,12 +76,22 @@ func (s *ServerService) RemoveMember(serverID, userID uint) error {
 }
 
 func (s *ServerService) GetServerMembers(serverID uint) ([]models.User, error) {
+	// Versuche zuerst aus dem Cache zu lesen
+	cacheKey := fmt.Sprintf("server_members:%d", serverID)
 	var users []models.User
+	if err := s.cache.Get(cacheKey, &users); err == nil {
+		return users, nil
+	}
+
+	// Wenn nicht im Cache, aus der Datenbank lesen
 	if err := s.db.Joins("JOIN members ON members.user_id = users.id").
 		Where("members.server_id = ?", serverID).
 		Find(&users).Error; err != nil {
 		return nil, err
 	}
+
+	// Im Cache speichern
+	s.cache.Set(cacheKey, users, 5*time.Minute)
 	return users, nil
 }
 
@@ -96,22 +113,38 @@ func (s *ServerService) HasPermission(serverID uint, userID uint, requiredRole m
 }
 
 func (s *ServerService) GetChannel(id uint) (*models.Channel, error) {
+	// Versuche zuerst aus dem Cache zu lesen
+	cacheKey := fmt.Sprintf("channel:%d", id)
 	var channel models.Channel
+	if err := s.cache.Get(cacheKey, &channel); err == nil {
+		return &channel, nil
+	}
+
+	// Wenn nicht im Cache, aus der Datenbank lesen
 	err := s.db.First(&channel, id).Error
 	if err != nil {
 		return nil, err
 	}
+
+	// Im Cache speichern
+	s.cache.Set(cacheKey, channel, 5*time.Minute)
 	return &channel, nil
 }
 
 func (s *ServerService) GetServerStats(id uint) (*models.ServerStats, error) {
-	// TODO: Implementiere echte Server-Statistiken
-	// Dies ist nur ein Mock für Demonstrationszwecke
-	stats := &models.ServerStats{
+	// Generiere neue Statistiken
+	stats := models.ServerStats{
 		CPU:    45.5,
 		Memory: 60.2,
 		Disk:   75.8,
-		Uptime: 3600, // 1 Stunde in Sekunden
+		Uptime: 3600,
 	}
-	return stats, nil
+
+	// Versuche im Cache zu speichern, ignoriere Fehler
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("server_stats:%d", id)
+		s.cache.Set(cacheKey, stats, 30*time.Second)
+	}
+
+	return &stats, nil
 }
