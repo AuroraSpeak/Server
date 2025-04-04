@@ -6,7 +6,6 @@ x-logging: &default-logging
 
 networks:
   app-network:
-    external: true
     name: app-network
 
 services:
@@ -27,8 +26,8 @@ services:
       - ./frontend/.env.docker
     environment:
       - NODE_ENV=development
-      - VITE_API_URL=http://localhost:8080/api
-      - VITE_WS_URL=ws://localhost:8080/ws
+      - VITE_API_URL=http://backend:8080/api
+      - VITE_WS_URL=ws://backend:8080/ws
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     depends_on:
@@ -47,6 +46,7 @@ services:
       - "8080:8080"
     volumes:
       - ./backend:/app:delegated
+      - ./backend/config.yaml:/app/config.yaml:ro
       - backend-go-cache:/go/pkg/mod
       - backend-tmp:/app/tmp
     environment:
@@ -61,7 +61,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - ALLOWED_ORIGINS=http://localhost:3000,ws://localhost:8080
+      - ALLOWED_ORIGINS=http://frontend:3000,ws://backend:8080
       - ENABLE_WEBSOCKET=true
       - ENABLE_METRICS=true
       - METRICS_PORT=9090
@@ -102,6 +102,22 @@ services:
       - app-network
     logging: *default-logging
     restart: unless-stopped
+
+  # Redis Commander UI
+  redis-commander:
+    image: ghcr.io/joeferner/redis-commander:latest
+    platform: linux/arm64/v8
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    networks:
+      - app-network
+    logging: *default-logging
+    restart: unless-stopped
+    depends_on:
+      - redis
 
   # Prometheus Service
   prometheus:

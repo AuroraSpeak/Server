@@ -10,17 +10,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/auraspeak/backend/internal/config"
+	"github.com/auraspeak/backend/internal/types"
 	"github.com/pion/turn/v2"
 )
 
 type TURNService struct {
 	server *turn.Server
 	mu     sync.RWMutex
-	config *config.Config
+	config *types.Config
 }
 
-func NewTURNService(cfg *config.Config) (*TURNService, error) {
+func NewTURNService(cfg *types.Config) (*TURNService, error) {
 	// Erstelle UDP-Listener für TURN
 	tcpListener, err := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", cfg.LocalTURN.Port))
 	if err != nil {

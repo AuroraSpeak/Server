@@ -3,11 +3,11 @@ package middleware
 import (
 	"strings"
 
-	"github.com/auraspeak/backend/internal/services"
+	"github.com/auraspeak/backend/internal/types"
 	"github.com/gofiber/fiber/v2"
 )
 
-func AuthMiddleware(authService *services.AuthService) fiber.Handler {
+func AuthMiddleware(authService types.AuthService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		auth := c.Get("Authorization")
 		if auth == "" {

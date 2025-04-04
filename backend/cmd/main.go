@@ -5,13 +5,14 @@ import (
 
 	"github.com/auraspeak/backend/internal/config"
 	"github.com/auraspeak/backend/internal/handlers"
+	"github.com/auraspeak/backend/internal/logging"
 	"github.com/auraspeak/backend/internal/models"
 	"github.com/auraspeak/backend/internal/repository"
 	"github.com/auraspeak/backend/internal/routes"
 	"github.com/auraspeak/backend/internal/services"
 	"github.com/auraspeak/backend/internal/websocket"
-
 	"github.com/joho/godotenv"
+	"github.com/pion/webrtc/v3"
 )
 
 func main() {
@@ -66,10 +67,17 @@ func main() {
 	serverService := services.NewServerService(db, cache)
 	channelService := services.NewChannelService(db)
 	messageService := services.NewMessageService(db)
-	webrtcService, err := services.NewWebRTCService(db, cfg)
-	if err != nil {
-		log.Fatalf("Failed to initialize WebRTC service: %v", err)
+
+	logger := logging.NewLogger("webrtc")
+	webrtcConfig := &webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		},
 	}
+	webrtcService := services.NewWebRTCService(webrtcConfig, logger)
+
 	inviteService := services.NewInviteService(db)
 	channelSettingsRepo := repository.NewChannelSettingsRepository(db)
 	channelSettingsService := services.NewChannelSettingsService(channelSettingsRepo)
@@ -107,7 +115,10 @@ func main() {
 	)
 
 	// Initialize server
-	server := config.NewServer(db, cfg)
+	server, err := config.NewServer(db, cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize server: %v", err)
+	}
 
 	// Setup middleware
 	server.SetupMiddleware()

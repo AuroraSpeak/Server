@@ -80,21 +80,23 @@ func (s *AuthService) Login(email, password string) (string, *models.User, error
 	return tokenString, &user, nil
 }
 
-func (s *AuthService) ValidateToken(tokenString string) (jwt.MapClaims, error) {
+func (s *AuthService) ValidateToken(tokenString string) (map[string]interface{}, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return []byte(s.jwtSecret), nil
 	})
 
-	if err != nil || !token.Valid {
+	if err != nil {
 		return nil, err
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, err
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		return map[string]interface{}(claims), nil
 	}
 
-	return claims, nil
+	return nil, fmt.Errorf("invalid token")
 }
 
 func (s *AuthService) IsMember(serverID string, userID uint) (bool, error) {
@@ -104,4 +106,12 @@ func (s *AuthService) IsMember(serverID string, userID uint) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (s *AuthService) GetUserByID(userID uint) (*models.User, error) {
+	var user models.User
+	if err := s.db.First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	return &user, nil
 }

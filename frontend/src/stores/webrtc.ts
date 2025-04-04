@@ -3,7 +3,7 @@ import { ref, computed } from "vue"
 import { WebRTCService } from "../services/webrtc.service"
 import { WebSocketService } from "../services/websocket.service"
 import { VoiceService } from "../services/voice"
-import { webrtcService } from "@/services/api"
+import { webRTCApiService } from "@/services/webrtc.api.service"
 
 interface WebRTCState {
   localStream: MediaStream | null;
@@ -13,6 +13,7 @@ interface WebRTCState {
   isInCall: boolean;
   error: string | null;
   wsConnection: WebSocket | null;
+  targetUserId?: string;
 }
 
 export const useWebRTCStore = defineStore("webrtc", {
@@ -111,7 +112,7 @@ export const useWebRTCStore = defineStore("webrtc", {
         // Handle ICE candidates
         this.peerConnection.onicecandidate = async (event) => {
           if (event.candidate) {
-            await webrtcService.sendIceCandidate(event.candidate);
+            await this.sendIceCandidate(event.candidate);
           }
         };
 
@@ -131,7 +132,7 @@ export const useWebRTCStore = defineStore("webrtc", {
 
         const offer = await this.peerConnection!.createOffer();
         await this.peerConnection!.setLocalDescription(offer);
-        await webrtcService.sendOffer(offer);
+        await this.sendOffer(offer);
         this.isCalling = true;
       } catch (error) {
         this.error = error instanceof Error ? error.message : 'Failed to create offer';
@@ -163,7 +164,7 @@ export const useWebRTCStore = defineStore("webrtc", {
         await this.peerConnection!.setRemoteDescription(offer);
         const answer = await this.peerConnection!.createAnswer();
         await this.peerConnection!.setLocalDescription(answer);
-        await webrtcService.sendAnswer(answer);
+        await this.sendAnswer(answer);
         this.isInCall = true;
       } catch (error) {
         this.error = error instanceof Error ? error.message : 'Failed to handle offer';
@@ -201,6 +202,27 @@ export const useWebRTCStore = defineStore("webrtc", {
       this.peerConnection = null;
       this.isCalling = false;
       this.isInCall = false;
+    },
+
+    async sendIceCandidate(candidate: RTCIceCandidate) {
+      await webRTCApiService.sendIceCandidate({
+        targetUserId: this.targetUserId!,
+        iceCandidate: candidate.toJSON(),
+      });
+    },
+
+    async sendOffer(offer: RTCSessionDescriptionInit) {
+      await webRTCApiService.sendOffer({
+        targetUserId: this.targetUserId!,
+        sessionDescription: offer,
+      });
+    },
+
+    async sendAnswer(answer: RTCSessionDescriptionInit) {
+      await webRTCApiService.sendAnswer({
+        targetUserId: this.targetUserId!,
+        sessionDescription: answer,
+      });
     },
   },
 })

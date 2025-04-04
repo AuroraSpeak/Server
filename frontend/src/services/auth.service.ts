@@ -17,6 +17,7 @@ export interface User {
   email: string
   avatar?: string
   createdAt: string
+  status: string
 }
 
 export interface AuthResponse {
@@ -75,6 +76,20 @@ class AuthService {
 
   isAuthenticated(): boolean {
     return !!apiService.getToken()
+  }
+
+  async updateUser(userData: Partial<User>): Promise<User> {
+    return apiService.put<User>("/auth/me", userData);
+  }
+
+  async updateAvatar(file: File): Promise<User> {
+    const formData = new FormData();
+    formData.append("avatar", file);
+    return apiService.put<User>("/auth/me/avatar", formData);
+  }
+
+  async updateStatus(status: User["status"]): Promise<User> {
+    return apiService.put<User>("/auth/me/status", { status });
   }
 }
 

@@ -109,3 +109,6 @@ next-env.d.ts
 *.temp
 .cache/ 
 source_code.zip
+
+# Konfigurationsdateien
+config.yaml

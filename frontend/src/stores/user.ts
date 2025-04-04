@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { authService } from '@/services/api';
+import { authService } from '@/services/auth.service';
 
 interface User {
   id: string;
@@ -12,95 +12,64 @@ interface User {
   updatedAt: string;
 }
 
-interface UserState {
-  currentUser: User | null;
-  loading: boolean;
-  error: string | null;
-}
-
 export const useUserStore = defineStore('user', {
-  state: (): UserState => ({
-    currentUser: null,
+  state: () => ({
+    user: null as User | null,
     loading: false,
-    error: null,
+    error: null as string | null,
   }),
 
   actions: {
-    async fetchCurrentUser() {
+    async fetchUser() {
+      this.loading = true;
       try {
-        this.loading = true;
-        this.error = null;
-        this.currentUser = await authService.getCurrentUser();
+        this.user = await authService.getCurrentUser();
       } catch (error) {
-        this.error = error instanceof Error ? error.message : 'Failed to fetch user data';
-        console.error('Failed to fetch user data:', error);
+        this.error = error instanceof Error ? error.message : 'Failed to fetch user';
       } finally {
         this.loading = false;
       }
     },
 
-    async updateUser(updates: Partial<User>) {
+    async updateUser(userData: Partial<User>) {
+      this.loading = true;
       try {
-        this.loading = true;
-        this.error = null;
-        if (!this.currentUser) {
-          throw new Error('No user logged in');
-        }
-        const updatedUser = await authService.updateUser(this.currentUser.id, updates);
-        this.currentUser = { ...this.currentUser, ...updatedUser };
+        this.user = await authService.updateUser(userData);
       } catch (error) {
         this.error = error instanceof Error ? error.message : 'Failed to update user';
-        console.error('Failed to update user:', error);
-        throw error;
       } finally {
         this.loading = false;
       }
     },
 
     async updateAvatar(file: File) {
+      this.loading = true;
       try {
-        this.loading = true;
-        this.error = null;
-        if (!this.currentUser) {
-          throw new Error('No user logged in');
-        }
-        const formData = new FormData();
-        formData.append('avatar', file);
-        const updatedUser = await authService.updateAvatar(this.currentUser.id, formData);
-        this.currentUser = { ...this.currentUser, ...updatedUser };
+        this.user = await authService.updateAvatar(file);
       } catch (error) {
         this.error = error instanceof Error ? error.message : 'Failed to update avatar';
-        console.error('Failed to update avatar:', error);
-        throw error;
       } finally {
         this.loading = false;
       }
     },
 
     async updateStatus(status: User['status']) {
+      this.loading = true;
       try {
-        this.loading = true;
-        this.error = null;
-        if (!this.currentUser) {
-          throw new Error('No user logged in');
-        }
-        const updatedUser = await authService.updateStatus(this.currentUser.id, status);
-        this.currentUser = { ...this.currentUser, ...updatedUser };
+        this.user = await authService.updateStatus(status);
       } catch (error) {
         this.error = error instanceof Error ? error.message : 'Failed to update status';
-        console.error('Failed to update status:', error);
-        throw error;
       } finally {
         this.loading = false;
       }
     },
 
     setUser(user: User | null) {
-      this.currentUser = user;
+      this.user = user;
     },
 
     clearUser() {
-      this.currentUser = null;
+      this.user = null;
       this.error = null;
     },
   },

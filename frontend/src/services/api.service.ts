@@ -2,11 +2,13 @@
 export class ApiService {
   private baseUrl: string
   private token: string | null = null
+  private readonly timeout = 10000 // 10 seconds timeout
 
   constructor() {
     const envApiUrl = import.meta.env.VITE_API_URL
     console.log('VITE_API_URL:', envApiUrl)
-    this.baseUrl = envApiUrl || "http://localhost:8080/api"
+    // Entferne trailing slash und /api, falls vorhanden
+    this.baseUrl = (envApiUrl || "http://localhost:8080").replace(/\/+$/, '').replace(/\/api$/, '')
     this.token = localStorage.getItem("token")
   }
 
@@ -24,8 +26,30 @@ export class ApiService {
     localStorage.removeItem("token")
   }
 
+  private async fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      })
+      clearTimeout(timeoutId)
+      return response
+    } catch (error) {
+      clearTimeout(timeoutId)
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout')
+      }
+      throw error
+    }
+  }
+
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`
+    // Entferne führenden Slash, falls vorhanden
+    const cleanEndpoint = endpoint.replace(/^\/+/, '')
+    const url = `${this.baseUrl}/api/${cleanEndpoint}`
     console.log('API Request URL:', url)
     console.log('Base URL:', this.baseUrl)
     console.log('Environment:', import.meta.env)
@@ -56,16 +80,21 @@ export class ApiService {
     }
 
     try {
-      const response = await fetch(url, config)
+      const response = await this.fetchWithTimeout(url, config)
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
+        let errorData = {}
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          console.warn('Failed to parse error response:', e)
+        }
+
         const errorMessage = errorData.message || `API request failed with status ${response.status}`
 
         // Handle authentication errors
         if (response.status === 401) {
           this.clearToken()
-          // Optionally redirect to login page
           if (typeof window !== "undefined") {
             window.dispatchEvent(new CustomEvent("auth:unauthorized"))
           }
@@ -79,9 +108,22 @@ export class ApiService {
         return {} as T
       }
 
-      return (await response.json()) as T
+      try {
+        return await response.json() as T
+      } catch (e) {
+        console.warn('Failed to parse response:', e)
+        return {} as T
+      }
     } catch (error) {
       console.error("API request error:", error)
+      if (error instanceof Error) {
+        if (error.message === 'Request timeout') {
+          throw new Error('Die Anfrage hat zu lange gedauert. Bitte versuchen Sie es später erneut.')
+        }
+        if (error.message.includes('Failed to fetch')) {
+          throw new Error('Verbindung zum Server fehlgeschlagen. Bitte überprüfen Sie Ihre Internetverbindung.')
+        }
+      }
       throw error
     }
   }

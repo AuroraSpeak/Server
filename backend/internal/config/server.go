@@ -6,6 +6,7 @@ import (
 	"github.com/auraspeak/backend/internal/csrf"
 	"github.com/auraspeak/backend/internal/logging"
 	"github.com/auraspeak/backend/internal/middleware"
+	"github.com/auraspeak/backend/internal/types"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
@@ -18,11 +19,11 @@ import (
 type Server struct {
 	app    *fiber.App
 	db     *gorm.DB
-	config *Config
+	config *types.Config
 	logger *zap.Logger
 }
 
-func NewServer(db *gorm.DB, config *Config) (*Server, error) {
+func NewServer(db *gorm.DB, config *types.Config) (*Server, error) {
 	// Initialisiere den Logger
 	if err := logging.Init(config.Environment); err != nil {
 		return nil, err
@@ -61,7 +62,7 @@ func (s *Server) SetupMiddleware() {
 
 	// CORS-Middleware
 	s.app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:3000",
+		AllowOrigins:     s.config.AllowedOrigins,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, Connection, Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Extensions, X-CSRF-Token",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: true,
@@ -69,8 +70,18 @@ func (s *Server) SetupMiddleware() {
 		ExposeHeaders:    "Content-Length, Content-Type, Sec-WebSocket-Accept",
 	}))
 
-	// CSRF-Middleware
-	s.app.Use(middleware.CSRFMiddleware(csrf.DefaultConfig))
+	// CSRF-Middleware nur in der Produktionsumgebung aktivieren
+	if s.config.Environment == "production" {
+		s.app.Use(middleware.CSRFMiddleware(csrf.Config{
+			TokenLength:    32,
+			CookieName:     "csrf_token",
+			HeaderName:     "X-CSRF-Token",
+			CookiePath:     "/",
+			CookieDomain:   "",
+			CookieSecure:   true,
+			CookieHTTPOnly: true,
+		}))
+	}
 
 	// Metrics endpoint
 	s.app.Get("/metrics", monitor.New())

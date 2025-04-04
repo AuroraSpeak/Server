@@ -4,18 +4,18 @@ import (
 	"encoding/json"
 
 	"github.com/auraspeak/backend/internal/logging"
-	"github.com/auraspeak/backend/internal/services"
+	"github.com/auraspeak/backend/internal/types"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"go.uber.org/zap"
 )
 
 type WebRTCHandler struct {
-	webrtcService *services.WebRTCService
+	webrtcService types.WebRTCService
 	logger        *zap.Logger
 }
 
-func NewWebRTCHandler(webrtcService *services.WebRTCService) *WebRTCHandler {
+func NewWebRTCHandler(webrtcService types.WebRTCService) *WebRTCHandler {
 	return &WebRTCHandler{
 		webrtcService: webrtcService,
 		logger:        logging.NewLogger("webrtc"),
@@ -121,7 +121,7 @@ func (h *WebRTCHandler) handleMessage(c *websocket.Conn, clientID string, msg We
 }
 
 func (h *WebRTCHandler) CreateOffer(c *fiber.Ctx) error {
-	var req services.OfferRequest
+	var req types.OfferRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Ungültige Anfrage",
@@ -141,7 +141,7 @@ func (h *WebRTCHandler) CreateOffer(c *fiber.Ctx) error {
 }
 
 func (h *WebRTCHandler) CreateAnswer(c *fiber.Ctx) error {
-	var req services.OfferRequest
+	var req types.OfferRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Ungültige Anfrage",
@@ -161,7 +161,7 @@ func (h *WebRTCHandler) CreateAnswer(c *fiber.Ctx) error {
 }
 
 func (h *WebRTCHandler) AddICECandidate(c *fiber.Ctx) error {
-	var req services.ICECandidateRequest
+	var req types.ICECandidateRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Ungültige Anfrage",
