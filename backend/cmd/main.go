@@ -6,6 +6,7 @@ import (
 	"github.com/auraspeak/backend/internal/config"
 	"github.com/auraspeak/backend/internal/handlers"
 	"github.com/auraspeak/backend/internal/models"
+	"github.com/auraspeak/backend/internal/repository"
 	"github.com/auraspeak/backend/internal/routes"
 	"github.com/auraspeak/backend/internal/services"
 	"github.com/auraspeak/backend/internal/websocket"
@@ -32,7 +33,19 @@ func main() {
 	}
 
 	// Auto migrate models
-	err = db.AutoMigrate(&models.User{}, &models.Server{}, &models.Channel{}, &models.Message{}, &models.Member{})
+	err = db.AutoMigrate(
+		&models.User{},
+		&models.Server{},
+		&models.Channel{},
+		&models.Message{},
+		&models.Member{},
+		&models.Invite{},
+		&models.Role{},
+		&models.ServerSettings{},
+		&models.MediaFile{},
+		&models.Friend{},
+		&models.ChannelSettings{},
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,6 +70,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize WebRTC service: %v", err)
 	}
+	inviteService := services.NewInviteService(db)
+	channelSettingsRepo := repository.NewChannelSettingsRepository(db)
+	channelSettingsService := services.NewChannelSettingsService(channelSettingsRepo)
 
 	// Initialize WebSocket Hub
 	wsHub := websocket.NewHub()
@@ -86,6 +102,8 @@ func main() {
 		channelService,
 		messageService,
 		webrtcService,
+		inviteService,
+		channelSettingsService,
 	)
 
 	// Initialize server

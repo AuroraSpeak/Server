@@ -1,21 +1,25 @@
+# Use Node.js as the base image
 FROM node:20-alpine
 
+# Set working directory
 WORKDIR /app
 
-# Installiere pnpm
-RUN corepack enable && corepack prepare pnpm@10.7.0 --activate
+# Install pnpm globally
+RUN npm install -g pnpm
 
-# Kopiere package.json und pnpm-lock.yaml
-COPY package.json pnpm-lock.yaml ./
-
-# Installiere Abhängigkeiten
+# Install dependencies first (for better caching)
+COPY package.json pnpm-lock.yaml* ./
 RUN pnpm install
+RUN pnpm approve-builds
 
-# Kopiere den Rest des Codes
-COPY . .
+# Set environment variables
+ENV NODE_ENV=development
+ENV VITE_API_URL=http://backend:8080
+ENV VITE_WS_URL=ws://backend:8080
 
-# Exponiere den Port
+# Expose the port the app will run on
 EXPOSE 3000
 
-# Starte den Entwicklungsserver mit Host-Binding
-CMD ["pnpm", "dev", "--host", "0.0.0.0"] 
+# Command to run the development server
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]
+

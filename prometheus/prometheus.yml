@@ -3,10 +3,15 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  - job_name: 'auraspeak-backend'
+  - job_name: 'auraspeak'
     static_configs:
-      - targets: ['backend:8080']
+      - targets: ['backend:9090']
     metrics_path: '/metrics'
+    scheme: 'http'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
 
   - job_name: 'postgres-exporter'
     static_configs:

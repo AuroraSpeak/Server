@@ -8,6 +8,7 @@ import (
 )
 
 type Config struct {
+	Environment    string
 	Port           string
 	JWTSecret      string
 	DBHost         string
@@ -51,6 +52,7 @@ func LoadConfig() (*Config, error) {
 	}
 
 	config := &Config{
+		Environment:    getEnvOrDefault("ENVIRONMENT", "development"),
 		Port:           getEnvOrDefault("PORT", "8080"),
 		JWTSecret:      getEnvOrDefault("JWT_SECRET", "development-jwt-secret-key-123"),
 		DBHost:         getEnvOrDefault("DB_HOST", "localhost"),

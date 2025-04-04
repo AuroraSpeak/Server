@@ -1,45 +1,42 @@
-version: '3.8'
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  app-network:
+    external: true
+    name: app-network
 
 services:
   # Frontend Services
-  nextapp-dev:
+  frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - NODE_ENV=development
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.pnpm-store
-      - /app/.next
+      - ./frontend:/app:delegated
+      - frontend-node-modules:/app/node_modules
+      - frontend-pnpm-store:/root/.local/share/pnpm/store
+    env_file:
+      - ./frontend/.env.docker
     environment:
-      NODE_ENV: development
-      VITE_API_URL: http://localhost:8080
-      CHOKIDAR_USEPOLLING: "true"
-      WATCHPACK_POLLING: "true"
-      VITE_DEV_SERVER_HOST: "0.0.0.0"
-      VITE_DEV_SERVER_PORT: "3000"
-    command: pnpm install && pnpm dev
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8080/api
+      - VITE_WS_URL=ws://localhost:8080/ws
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     depends_on:
       - backend
     networks:
       - app-network
-    tty: true
-    stdin_open: true
+    logging: *default-logging
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:3000"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    develop:
-      watch:
-        - action: sync
-          path: ./frontend
-          target: /app
-        - action: rebuild
-          path: frontend/package.json
 
   # Backend Service
   backend:
@@ -49,34 +46,32 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./backend:/app
-      - /app/tmp
+      - ./backend:/app:delegated
+      - backend-go-cache:/go/pkg/mod
+      - backend-tmp:/app/tmp
     environment:
-      PORT: 8080
-      JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-key-123}
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${POSTGRES_USER:-postgres}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      DB_NAME: ${POSTGRES_DB:-auraspeak}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      ALLOWED_ORIGINS: http://localhost:3000,ws://localhost:8080
-      GO_ENV: development
-      ENABLE_WEBSOCKET: "true"
+      - GO_ENV=development
+      - PORT=8080
+      - JWT_SECRET=${JWT_SECRET:-development-jwt-secret-key-123}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - DB_NAME=${POSTGRES_DB:-auraspeak}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - ALLOWED_ORIGINS=http://localhost:3000,ws://localhost:8080
+      - ENABLE_WEBSOCKET=true
+      - ENABLE_METRICS=true
+      - METRICS_PORT=9090
     depends_on:
       - postgres
       - redis
     networks:
       - app-network
-    develop:
-      watch:
-        - action: sync
-          path: ./backend
-          target: /app
-        - action: rebuild
-          path: backend/go.mod
+    logging: *default-logging
+    restart: unless-stopped
 
   # Database
   postgres:
@@ -84,13 +79,15 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data:delegated
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-auraspeak}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-auraspeak}
     networks:
       - app-network
+    logging: *default-logging
+    restart: unless-stopped
 
   # Redis Service
   redis:
@@ -98,37 +95,90 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - redis-data:/data:delegated
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Prometheus Service
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus:delegated
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    networks:
+      - app-network
+    logging: *default-logging
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  # Grafana Service
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana:delegated
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=localhost
+      - GF_SMTP_ENABLED=false
+    networks:
+      - app-network
+    logging: *default-logging
+    restart: unless-stopped
+    depends_on:
+      - prometheus
 
   # pgAdmin Service
   pgadmin:
     image: dpage/pgadmin4
     ports:
       - "5050:80"
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
     volumes:
-      - pgadmin-data:/var/lib/pgadmin
-    depends_on:
-      - postgres
+      - pgadmin-data:/var/lib/pgadmin:delegated
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_DEFAULT_PASSWORD:-admin}
     networks:
       - app-network
-
-networks:
-  app-network:
-    driver: bridge
+    logging: *default-logging
+    restart: unless-stopped
+    depends_on:
+      - postgres
 
 volumes:
   postgres-data:
-  pgadmin-data:
+    driver: local
   redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  pgadmin-data:
+    driver: local
+  frontend-node-modules:
+    driver: local
+  frontend-pnpm-store:
+    driver: local
+  backend-go-cache:
+    driver: local
+  backend-tmp:
+    driver: local

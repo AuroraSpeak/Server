@@ -49,4 +49,18 @@ func SetupRoutes(app *fiber.App, handlers *handlers.Handlers, wsHub *websocket.H
 	api.Post("/webrtc/offer", handlers.WebRTC.CreateOffer)
 	api.Post("/webrtc/answer", handlers.WebRTC.CreateAnswer)
 	api.Post("/webrtc/ice-candidate", handlers.WebRTC.AddICECandidate)
+
+	// Channel Settings routes
+	api.Get("/channels/:id/settings", handlers.ChannelSettings.GetSettings)
+	api.Put("/channels/:id/settings", handlers.ChannelSettings.UpdateSettings)
+	api.Get("/channels/:id/permissions", handlers.ChannelSettings.GetPermissionOverwrites)
+	api.Post("/channels/:id/permissions", handlers.ChannelSettings.CreatePermissionOverwrite)
+	api.Put("/channels/:id/permissions/:overwriteId", handlers.ChannelSettings.UpdatePermissionOverwrite)
+	api.Delete("/channels/:id/permissions/:overwriteId", handlers.ChannelSettings.DeletePermissionOverwrite)
+
+	// Invite routes
+	api.Get("/invites/server/:serverId", handlers.Invite.GetInvites)
+	api.Post("/invites/server/:serverId", handlers.Invite.CreateInvite)
+	api.Delete("/invites/server/:serverId/:inviteId", handlers.Invite.DeleteInvite)
+	api.Post("/invites/use/:code", handlers.Invite.UseInvite)
 }

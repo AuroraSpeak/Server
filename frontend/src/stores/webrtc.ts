@@ -1,126 +1,207 @@
 import { defineStore } from "pinia"
-import { ref } from "vue"
+import { ref, computed } from "vue"
 import { WebRTCService } from "../services/webrtc.service"
 import { WebSocketService } from "../services/websocket.service"
 import { VoiceService } from "../services/voice"
+import { webrtcService } from "@/services/api"
 
-interface Channel {
-  id: string
-  name: string
+interface WebRTCState {
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
+  peerConnection: RTCPeerConnection | null;
+  isCalling: boolean;
+  isInCall: boolean;
+  error: string | null;
+  wsConnection: WebSocket | null;
 }
 
-export const useWebRTCStore = defineStore("webrtc", () => {
-  const voiceService = ref<VoiceService | null>(null)
-  const isCallActive = ref(false)
-  const isMuted = ref(false)
-  const connectionState = ref<"disconnected" | "connecting" | "connected">("disconnected")
-  const error = ref<string | null>(null)
-  const activeSpeakers = ref<string[]>([])
-  const currentChannel = ref<string | null>(null)
-  const availableChannels = ref<Channel[]>([])
+export const useWebRTCStore = defineStore("webrtc", {
+  state: (): WebRTCState => ({
+    localStream: null,
+    remoteStream: null,
+    peerConnection: null,
+    isCalling: false,
+    isInCall: false,
+    error: null,
+    wsConnection: null,
+  }),
 
-  async function initialize(wsUrl: string) {
-    try {
-      connectionState.value = "connecting"
-      const webrtcService = new WebRTCService()
-      const wsService = new WebSocketService(wsUrl, webrtcService)
-      webrtcService.setWebSocketService(wsService)
-      voiceService.value = new VoiceService(webrtcService, wsService)
-      await voiceService.value.connectToServer("server")
-      connectionState.value = "connected"
-      await fetchAvailableChannels()
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Unbekannter Fehler"
-      connectionState.value = "disconnected"
-    }
-  }
+  actions: {
+    async initialize(wsUrl: string) {
+      try {
+        this.wsConnection = new WebSocket(wsUrl);
+        
+        this.wsConnection.onopen = () => {
+          console.log('WebSocket connection established');
+        };
 
-  async function fetchAvailableChannels() {
-    try {
-      const response = await fetch('/api/channels')
-      if (!response.ok) throw new Error('Fehler beim Abrufen der Kanäle')
-      availableChannels.value = await response.json()
-    } catch (err) {
-      console.error('Fehler beim Abrufen der Kanäle:', err)
-    }
-  }
+        this.wsConnection.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          // Handle WebSocket messages here
+        };
 
-  async function joinChannel(channelId: string) {
-    try {
-      if (!voiceService.value) {
-        throw new Error("Voice-Service nicht initialisiert")
+        this.wsConnection.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          this.error = 'WebSocket connection error';
+        };
+
+        this.wsConnection.onclose = () => {
+          console.log('WebSocket connection closed');
+        };
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Failed to initialize WebSocket';
+        throw error;
       }
-      
-      if (currentChannel.value) {
-        await leaveChannel()
+    },
+
+    disconnect() {
+      if (this.wsConnection) {
+        this.wsConnection.close();
+        this.wsConnection = null;
+      }
+      if (this.peerConnection) {
+        this.peerConnection.close();
+        this.peerConnection = null;
+      }
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(track => track.stop());
+        this.localStream = null;
+      }
+      if (this.remoteStream) {
+        this.remoteStream.getTracks().forEach(track => track.stop());
+        this.remoteStream = null;
+      }
+    },
+
+    async initializeLocalStream() {
+      try {
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: true,
+        });
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Failed to access media devices';
+        console.error('Failed to access media devices:', error);
+        throw error;
+      }
+    },
+
+    async createPeerConnection() {
+      try {
+        const configuration = {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+          ],
+        };
+
+        this.peerConnection = new RTCPeerConnection(configuration);
+
+        // Add local stream to peer connection
+        if (this.localStream) {
+          this.localStream.getTracks().forEach(track => {
+            this.peerConnection?.addTrack(track, this.localStream!);
+          });
+        }
+
+        // Handle remote stream
+        this.peerConnection.ontrack = (event) => {
+          this.remoteStream = event.streams[0];
+        };
+
+        // Handle ICE candidates
+        this.peerConnection.onicecandidate = async (event) => {
+          if (event.candidate) {
+            await webrtcService.sendIceCandidate(event.candidate);
+          }
+        };
+
+        return this.peerConnection;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Failed to create peer connection';
+        console.error('Failed to create peer connection:', error);
+        throw error;
+      }
+    },
+
+    async createOffer() {
+      try {
+        if (!this.peerConnection) {
+          await this.createPeerConnection();
+        }
+
+        const offer = await this.peerConnection!.createOffer();
+        await this.peerConnection!.setLocalDescription(offer);
+        await webrtcService.sendOffer(offer);
+        this.isCalling = true;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Failed to create offer';
+        console.error('Failed to create offer:', error);
+        throw error;
+      }
+    },
+
+    async handleAnswer(answer: RTCSessionDescriptionInit) {
+      try {
+        if (!this.peerConnection) {
+          throw new Error('No peer connection established');
+        }
+        await this.peerConnection.setRemoteDescription(answer);
+        this.isInCall = true;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Failed to handle answer';
+        console.error('Failed to handle answer:', error);
+        throw error;
+      }
+    },
+
+    async handleOffer(offer: RTCSessionDescriptionInit) {
+      try {
+        if (!this.peerConnection) {
+          await this.createPeerConnection();
+        }
+
+        await this.peerConnection!.setRemoteDescription(offer);
+        const answer = await this.peerConnection!.createAnswer();
+        await this.peerConnection!.setLocalDescription(answer);
+        await webrtcService.sendAnswer(answer);
+        this.isInCall = true;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Failed to handle offer';
+        console.error('Failed to handle offer:', error);
+        throw error;
+      }
+    },
+
+    async handleIceCandidate(candidate: RTCIceCandidateInit) {
+      try {
+        if (!this.peerConnection) {
+          throw new Error('No peer connection established');
+        }
+        await this.peerConnection.addIceCandidate(candidate);
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Failed to handle ICE candidate';
+        console.error('Failed to handle ICE candidate:', error);
+        throw error;
+      }
+    },
+
+    endCall() {
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(track => track.stop());
+      }
+      if (this.remoteStream) {
+        this.remoteStream.getTracks().forEach(track => track.stop());
+      }
+      if (this.peerConnection) {
+        this.peerConnection.close();
       }
 
-      await voiceService.value.joinChannel(channelId)
-      currentChannel.value = channelId
-      isCallActive.value = true
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Unbekannter Fehler"
-      isCallActive.value = false
-      currentChannel.value = null
-    }
-  }
-
-  async function leaveChannel() {
-    try {
-      if (!voiceService.value) {
-        throw new Error("Voice-Service nicht initialisiert")
-      }
-      
-      if (currentChannel.value) {
-        await voiceService.value.leaveChannel()
-        currentChannel.value = null
-        isCallActive.value = false
-      }
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Unbekannter Fehler"
-    }
-  }
-
-  async function disconnect() {
-    try {
-      if (isCallActive.value) {
-        await leaveChannel()
-      }
-      if (voiceService.value) {
-        await voiceService.value.disconnectFromServer()
-      }
-      connectionState.value = "disconnected"
-      currentChannel.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Unbekannter Fehler"
-    }
-  }
-
-  async function toggleMute() {
-    try {
-      if (!voiceService.value) {
-        throw new Error("Voice-Service nicht initialisiert")
-      }
-      await voiceService.value.toggleMute()
-      isMuted.value = voiceService.value.isMuted()
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : "Unbekannter Fehler"
-    }
-  }
-
-  return {
-    connectionState,
-    error,
-    activeSpeakers,
-    currentChannel,
-    availableChannels,
-    isCallActive,
-    isMuted,
-    initialize,
-    joinChannel,
-    leaveChannel,
-    disconnect,
-    toggleMute
-  }
+      this.localStream = null;
+      this.remoteStream = null;
+      this.peerConnection = null;
+      this.isCalling = false;
+      this.isInCall = false;
+    },
+  },
 })
 

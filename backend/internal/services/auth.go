@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/auraspeak/backend/internal/models"
@@ -45,16 +46,25 @@ func (s *AuthService) Register(email, password, fullName string) (*models.User, 
 func (s *AuthService) Login(email, password string) (string, *models.User, error) {
 	var user models.User
 	if err := s.db.Where("email = ?", email).First(&user).Error; err != nil {
-		return "", nil, errors.New("invalid credentials")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", nil, errors.New("user not found")
+		}
+		return "", nil, fmt.Errorf("database error: %v", err)
+	}
+
+	if !user.Active {
+		return "", nil, errors.New("account is deactivated")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
-		return "", nil, errors.New("invalid credentials")
+		return "", nil, errors.New("invalid password")
 	}
 
 	// Update last login
 	user.LastLogin = time.Now()
-	s.db.Save(&user)
+	if err := s.db.Save(&user).Error; err != nil {
+		return "", nil, fmt.Errorf("failed to update last login: %v", err)
+	}
 
 	// Generate JWT
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -64,7 +74,7 @@ func (s *AuthService) Login(email, password string) (string, *models.User, error
 
 	tokenString, err := token.SignedString([]byte(s.jwtSecret))
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("failed to generate token: %v", err)
 	}
 
 	return tokenString, &user, nil

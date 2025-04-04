@@ -1,22 +1,38 @@
-FROM golang:1.21-alpine
+# Entwicklungs-Stage
+FROM golang:1.22-alpine
 
 WORKDIR /app
 
-# Install build dependencies and Air
-RUN apk add --no-cache gcc musl-dev && \
+# Installiere Build-Abhängigkeiten und Air
+RUN apk add --no-cache gcc musl-dev git && \
     go install github.com/cosmtrek/air@v1.49.0
 
-# Copy go mod and sum files
+# Optimiere Go für Container
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GO111MODULE=on
+ENV GOFLAGS=-mod=vendor
+
+# Kopiere go.mod und go.sum
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download
+# Lade Abhängigkeiten mit Cache-Layer
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download && \
+    go mod verify
 
-# Copy source code
+# Kopiere den Rest des Codes
 COPY . .
 
-# Expose port
+# Vendor Dependencies
+RUN go mod vendor
+
+# Health Check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Exponiere den Port
 EXPOSE 8080
 
-# Run the application with Air for hot reload
-CMD ["air"] 
+# Starte die Anwendung mit Air für Hot-Reloading
+CMD ["air", "-c", ".air.toml"] 

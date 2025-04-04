@@ -2,20 +2,23 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
 
+	"github.com/auraspeak/backend/internal/logging"
 	"github.com/auraspeak/backend/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
+	"go.uber.org/zap"
 )
 
 type WebRTCHandler struct {
 	webrtcService *services.WebRTCService
+	logger        *zap.Logger
 }
 
 func NewWebRTCHandler(webrtcService *services.WebRTCService) *WebRTCHandler {
 	return &WebRTCHandler{
 		webrtcService: webrtcService,
+		logger:        logging.NewLogger("webrtc"),
 	}
 }
 
@@ -27,7 +30,7 @@ type WebRTCMessage struct {
 func (h *WebRTCHandler) HandleWebSocket(c *websocket.Conn) {
 	clientID := c.Query("clientId")
 	if clientID == "" {
-		log.Printf("Keine Client-ID angegeben")
+		h.logger.Error("Keine Client-ID angegeben")
 		c.Close()
 		return
 	}
@@ -37,15 +40,30 @@ func (h *WebRTCHandler) HandleWebSocket(c *websocket.Conn) {
 
 func (h *WebRTCHandler) handleConnection(c *websocket.Conn, clientID string) {
 	defer func() {
+		h.logger.Info("WebRTC-Verbindung wird geschlossen",
+			zap.String("clientID", clientID),
+		)
 		h.webrtcService.ClosePeerConnection(clientID)
 		c.Close()
 	}()
+
+	h.logger.Info("Neue WebRTC-Verbindung hergestellt",
+		zap.String("clientID", clientID),
+	)
 
 	for {
 		messageType, message, err := c.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("Fehler beim Lesen der WebSocket-Nachricht: %v", err)
+				h.logger.Error("Unerwarteter WebSocket-Fehler",
+					zap.Error(err),
+					zap.String("clientID", clientID),
+				)
+			} else {
+				h.logger.Info("WebSocket-Verbindung geschlossen",
+					zap.String("clientID", clientID),
+					zap.Error(err),
+				)
 			}
 			break
 		}
@@ -53,12 +71,24 @@ func (h *WebRTCHandler) handleConnection(c *websocket.Conn, clientID string) {
 		if messageType == websocket.TextMessage {
 			var msg WebRTCMessage
 			if err := json.Unmarshal(message, &msg); err != nil {
-				log.Printf("Fehler beim Parsen der WebSocket-Nachricht: %v", err)
+				h.logger.Error("Fehler beim Parsen der WebSocket-Nachricht",
+					zap.Error(err),
+					zap.String("clientID", clientID),
+				)
 				continue
 			}
 
+			h.logger.Debug("WebRTC-Nachricht empfangen",
+				zap.String("clientID", clientID),
+				zap.String("type", msg.Type),
+			)
+
 			if err := h.handleMessage(c, clientID, msg); err != nil {
-				log.Printf("Fehler beim Verarbeiten der Nachricht: %v", err)
+				h.logger.Error("Fehler beim Verarbeiten der Nachricht",
+					zap.Error(err),
+					zap.String("clientID", clientID),
+					zap.String("type", msg.Type),
+				)
 			}
 		}
 	}
@@ -67,69 +97,27 @@ func (h *WebRTCHandler) handleConnection(c *websocket.Conn, clientID string) {
 func (h *WebRTCHandler) handleMessage(c *websocket.Conn, clientID string, msg WebRTCMessage) error {
 	switch msg.Type {
 	case "offer":
-		var offer struct {
-			SDP string `json:"sdp"`
-		}
-		if err := json.Unmarshal(msg.Payload, &offer); err != nil {
-			return err
-		}
-		return h.handleOffer(c, clientID, offer.SDP)
-
+		h.logger.Info("WebRTC-Angebot empfangen",
+			zap.String("clientID", clientID),
+		)
+		return h.webrtcService.HandleOffer(clientID, msg.Payload)
 	case "answer":
-		var answer struct {
-			SDP string `json:"sdp"`
-		}
-		if err := json.Unmarshal(msg.Payload, &answer); err != nil {
-			return err
-		}
-		return h.handleAnswer(c, clientID, answer.SDP)
-
+		h.logger.Info("WebRTC-Antwort empfangen",
+			zap.String("clientID", clientID),
+		)
+		return h.webrtcService.HandleAnswer(clientID, msg.Payload)
 	case "ice-candidate":
-		var candidate struct {
-			Candidate string `json:"candidate"`
-		}
-		if err := json.Unmarshal(msg.Payload, &candidate); err != nil {
-			return err
-		}
-		return h.handleICECandidate(c, clientID, candidate.Candidate)
-
-	case "ping":
-		return h.handlePing(c)
-
+		h.logger.Debug("ICE-Kandidat empfangen",
+			zap.String("clientID", clientID),
+		)
+		return h.webrtcService.HandleICECandidate(clientID, msg.Payload)
 	default:
-		log.Printf("Unbekannte Nachricht empfangen: %s", msg.Type)
+		h.logger.Warn("Unbekannter Nachrichtentyp",
+			zap.String("clientID", clientID),
+			zap.String("type", msg.Type),
+		)
 		return nil
 	}
-}
-
-func (h *WebRTCHandler) handleOffer(c *websocket.Conn, clientID, sdp string) error {
-	answer, err := h.webrtcService.HandleOffer(clientID, sdp)
-	if err != nil {
-		return err
-	}
-
-	response := WebRTCMessage{
-		Type:    "answer",
-		Payload: json.RawMessage(`{"sdp": "` + answer + `"}`),
-	}
-
-	return c.WriteJSON(response)
-}
-
-func (h *WebRTCHandler) handleAnswer(c *websocket.Conn, clientID, sdp string) error {
-	return h.webrtcService.HandleAnswer(clientID, sdp)
-}
-
-func (h *WebRTCHandler) handleICECandidate(c *websocket.Conn, clientID, candidate string) error {
-	return h.webrtcService.HandleICECandidate(clientID, candidate)
-}
-
-func (h *WebRTCHandler) handlePing(c *websocket.Conn) error {
-	response := WebRTCMessage{
-		Type:    "pong",
-		Payload: json.RawMessage("{}"),
-	}
-	return c.WriteJSON(response)
 }
 
 func (h *WebRTCHandler) CreateOffer(c *fiber.Ctx) error {

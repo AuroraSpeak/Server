@@ -6,11 +6,13 @@ import (
 )
 
 type Handlers struct {
-	Auth    *AuthHandler
-	Server  *ServerHandler
-	Channel *ChannelHandler
-	Message *MessageHandler
-	WebRTC  *WebRTCHandler
+	Auth            *AuthHandler
+	Server          *ServerHandler
+	Channel         *ChannelHandler
+	Message         *MessageHandler
+	WebRTC          *WebRTCHandler
+	Invite          *InviteHandler
+	ChannelSettings *ChannelSettingsHandler
 }
 
 func NewHandlers(
@@ -20,12 +22,16 @@ func NewHandlers(
 	channelService *services.ChannelService,
 	messageService *services.MessageService,
 	webrtcService *services.WebRTCService,
+	inviteService *services.InviteService,
+	channelSettingsService *services.ChannelSettingsService,
 ) *Handlers {
 	return &Handlers{
-		Auth:    NewAuthHandler(authService),
-		Server:  NewServerHandler(serverService),
-		Channel: NewChannelHandler(channelService, serverService),
-		Message: NewMessageHandler(messageService, serverService),
-		WebRTC:  NewWebRTCHandler(webrtcService),
+		Auth:            NewAuthHandler(authService),
+		Server:          NewServerHandler(serverService),
+		Channel:         NewChannelHandler(channelService, serverService),
+		Message:         NewMessageHandler(messageService, serverService),
+		WebRTC:          NewWebRTCHandler(webrtcService),
+		Invite:          NewInviteHandler(inviteService),
+		ChannelSettings: NewChannelSettingsHandler(channelSettingsService),
 	}
 }

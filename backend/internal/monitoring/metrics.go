@@ -24,6 +24,28 @@ var (
 		[]string{"method", "path"},
 	)
 
+	// Cache-Metriken
+	CacheHits = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cache_hits_total",
+			Help: "Gesamtzahl der Cache-Treffer",
+		},
+	)
+
+	CacheMisses = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cache_misses_total",
+			Help: "Gesamtzahl der Cache-Fehlschläge",
+		},
+	)
+
+	CacheErrors = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "cache_errors_total",
+			Help: "Gesamtzahl der Cache-Fehler",
+		},
+	)
+
 	// WebRTC-Metriken
 	WebRTCConnections = promauto.NewGauge(
 		prometheus.GaugeOpts{

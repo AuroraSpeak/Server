@@ -117,17 +117,92 @@ docker-compose up -d
 
 ## Monitoring
 
-### Prometheus Metriken
-- HTTP-Anfragen
-- WebRTC-Verbindungen
-- Datenbank-Performance
-- Speicherverbrauch
+### Prometheus und Grafana Integration
 
-### Grafana Dashboards
-- System-Übersicht
-- Anwendungs-Metriken
-- Datenbank-Performance
-- WebRTC-Statistiken
+AuraSpeak verwendet Prometheus für das Sammeln von Metriken und Grafana für die Visualisierung. Die Integration ist bereits vorkonfiguriert und kann mit den folgenden Schritten genutzt werden:
+
+1. **Start der Services**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **Zugriff auf die Dashboards**
+   - Prometheus: http://localhost:9090
+   - Grafana: http://localhost:3001
+     - Standard-Login: admin/admin
+
+3. **Verfügbare Metriken**
+   - HTTP-Anfragen und Antwortzeiten
+   - Cache-Performance (Trefferrate, Fehlschläge)
+   - WebRTC-Verbindungen
+   - Datenbank-Performance
+   - Speichernutzung
+
+### Konfiguration
+
+Die Monitoring-Konfiguration befindet sich in folgenden Dateien:
+- `prometheus/prometheus.yml`: Prometheus-Konfiguration
+- `grafana/provisioning/`: Grafana-Konfiguration und Dashboards
+
+### Metriken-Übersicht
+
+#### HTTP-Metriken
+- `http_requests_total`: Gesamtzahl der HTTP-Anfragen
+- `http_request_duration_seconds`: Dauer der HTTP-Anfragen
+
+#### Cache-Metriken
+- `cache_hits_total`: Anzahl der Cache-Treffer
+- `cache_misses_total`: Anzahl der Cache-Fehlschläge
+- `cache_errors_total`: Anzahl der Cache-Fehler
+
+#### WebRTC-Metriken
+- `webrtc_connections`: Aktuelle Anzahl der WebRTC-Verbindungen
+- `webrtc_connection_errors_total`: Anzahl der Verbindungsfehler
+
+#### Datenbank-Metriken
+- `database_query_duration_seconds`: Dauer der Datenbankabfragen
+- `database_errors_total`: Anzahl der Datenbankfehler
+
+#### System-Metriken
+- `memory_usage_bytes`: Aktueller Speicherverbrauch
+
+### Dashboard-Anpassung
+
+Das vorkonfigurierte Dashboard kann in Grafana angepasst werden:
+1. Melden Sie sich bei Grafana an
+2. Navigieren Sie zu Dashboards -> AuraSpeak Dashboard
+3. Klicken Sie auf das Zahnrad-Symbol für die Einstellungen
+4. Wählen Sie "JSON Model" für direkte Bearbeitung
+
+### Alerts
+
+Für die Einrichtung von Alerts:
+1. Öffnen Sie Grafana
+2. Navigieren Sie zu Alerting -> Alert Rules
+3. Klicken Sie auf "New Alert Rule"
+4. Konfigurieren Sie die Bedingungen und Benachrichtigungen
+
+Beispiel für einen Cache-Alert:
+```promql
+rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) * 100 < 80
+```
+
+### Troubleshooting
+
+1. **Metriken werden nicht angezeigt**
+   - Überprüfen Sie die Prometheus-Targets unter http://localhost:9090/targets
+   - Stellen Sie sicher, dass der Backend-Service läuft
+   - Überprüfen Sie die Logs: `docker-compose logs backend`
+
+2. **Grafana zeigt keine Daten**
+   - Überprüfen Sie die Datenquellen-Konfiguration in Grafana
+   - Stellen Sie sicher, dass Prometheus erreichbar ist
+   - Überprüfen Sie die Zeitbereichseinstellungen im Dashboard
+
+3. **Hohe Latenz**
+   - Überprüfen Sie die `http_request_duration_seconds` Metrik
+   - Analysieren Sie die Cache-Hit-Rate
+   - Überprüfen Sie die Datenbank-Performance-Metriken
 
 ## Fehler-Tracking
 

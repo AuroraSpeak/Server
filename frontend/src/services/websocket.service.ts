@@ -5,133 +5,94 @@ interface WebSocketMessage {
   payload: any
 }
 
-interface OfferPayload {
-  sdp: RTCSessionDescriptionInit
-  targetUserId: string
-}
-
-interface AnswerPayload {
-  sdp: RTCSessionDescriptionInit
-  targetUserId: string
-}
-
-interface IceCandidatePayload {
-  candidate: RTCIceCandidateInit
-  targetUserId: string
-}
-
-// Eigene EventEmitter-Implementierung für Browser-Kompatibilität
-class BrowserEventEmitter {
-  private listeners: { [event: string]: ((...args: unknown[]) => void)[] } = {}
-
-  on(event: string, callback: (...args: unknown[]) => void): void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = []
-    }
-    this.listeners[event].push(callback)
-  }
-
-  emit(event: string, ...args: unknown[]): void {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach((callback) => callback(...args))
-    }
-  }
-
-  removeListener(event: string, callback: (...args: unknown[]) => void): void {
-    if (this.listeners[event]) {
-      this.listeners[event] = this.listeners[event].filter((cb) => cb !== callback)
-    }
-  }
-}
-
-export class WebSocketService extends BrowserEventEmitter {
+class WebSocketService {
   private ws: WebSocket | null = null
   private reconnectAttempts = 0
   private readonly maxReconnectAttempts = 5
   private readonly reconnectDelay = 1000
   private heartbeatInterval: number | null = null
   private messageQueue: WebSocketMessage[] = []
-  private readonly DEBUG = true
   private webrtcService: WebRTCService | null = null
   private token: string | null = null
-  private url = ""
-  private isConnecting = false
-  private connectionPromise: Promise<void> | null = null
+  private listeners: Record<string, ((payload: any) => void)[]> = {}
 
   constructor(
     private readonly wsUrl: string,
     webrtcService?: WebRTCService,
   ) {
-    super()
-    this.url = wsUrl.startsWith('ws') ? wsUrl : `ws://${wsUrl}`
     if (webrtcService) {
       this.webrtcService = webrtcService
     }
-    // Hole den Token aus dem localStorage
     this.token = localStorage.getItem("token")
   }
 
   public setToken(token: string) {
     this.token = token
     localStorage.setItem("token", token)
-    this.log("Token gesetzt")
-  }
-
-  private log(message: string, data?: unknown) {
-    if (this.DEBUG) {
-      const timestamp = new Date().toISOString()
-      if (data) {
-        console.log(`[${timestamp}] [WebSocketService] ${message}`, data)
-      } else {
-        console.log(`[${timestamp}] [WebSocketService] ${message}`)
-      }
-    }
-  }
-
-  private error(message: string, error?: unknown) {
-    if (this.DEBUG) {
-      const timestamp = new Date().toISOString()
-      if (error) {
-        console.error(`[${timestamp}] [WebSocketService] ${message}`, error)
-      } else {
-        console.error(`[${timestamp}] [WebSocketService] ${message}`)
-      }
-    }
   }
 
   public async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(this.wsUrl)
-        
-        this.ws.onopen = () => {
-          console.log("WebSocket-Verbindung hergestellt")
-          this.reconnectAttempts = 0
-          this.startHeartbeat()
-          this.processMessageQueue()
-          resolve()
-        }
+      if (!this.wsUrl.startsWith("ws://") && !this.wsUrl.startsWith("wss://")) {
+        reject(new Error("Invalid WebSocket URL"))
+        return
+      }
 
-        this.ws.onclose = () => {
-          console.log("WebSocket-Verbindung geschlossen")
-          this.handleReconnect()
-        }
+      // Add token to URL if available
+      const wsUrlWithToken = this.token ? `${this.wsUrl}?token=${this.token}` : this.wsUrl
 
-        this.ws.onerror = (error) => {
-          console.error("WebSocket-Fehler:", error)
-          reject(error)
-        }
+      this.ws = new WebSocket(wsUrlWithToken)
+      const timeout = setTimeout(() => {
+        reject(new Error("WebSocket connection timeout"))
+      }, 5000)
 
-        this.ws.onmessage = async (event) => {
-          try {
-            const message = JSON.parse(event.data)
-            await this.handleMessage(message)
-          } catch (error) {
-            console.error("Fehler beim Verarbeiten der WebSocket-Nachricht:", error)
-          }
-        }
-      } catch (error) {
+      this.ws.onopen = () => {
+        clearTimeout(timeout)
+        this.reconnectAttempts = 0
+        this.startHeartbeat()
+        this.processMessageQueue()
+        resolve()
+      }
+
+      this.ws.onerror = (error) => {
+        clearTimeout(timeout)
+        console.error("WebSocket connection error:", error)
         reject(error)
+      }
+
+      this.ws.onclose = (event) => {
+        this.stopHeartbeat()
+
+        // Don't attempt to reconnect if the closure was clean
+        if (event.wasClean) {
+          console.log("WebSocket closed cleanly, code=" + event.code + " reason=" + event.reason)
+          return
+        }
+
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts)
+          console.log(
+            `WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts})`,
+          )
+
+          setTimeout(() => {
+            this.reconnectAttempts++
+            this.connect().catch((err) => {
+              console.error("WebSocket reconnection failed:", err)
+            })
+          }, delay)
+        } else {
+          console.error("WebSocket reconnection failed after maximum attempts")
+        }
+      }
+
+      this.ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          this.handleMessage(message)
+        } catch (error) {
+          console.error("Error parsing message:", error)
+        }
       }
     })
   }
@@ -169,35 +130,40 @@ export class WebSocketService extends BrowserEventEmitter {
     }
   }
 
-  private async handleMessage(message: WebSocketMessage): Promise<void> {
-    if (!this.webrtcService) {
-      throw new Error("WebRTC-Service nicht initialisiert")
+  private handleMessage(message: WebSocketMessage): void {
+    if (message.type === "pong") return
+
+    if (this.webrtcService) {
+      switch (message.type) {
+        case "offer":
+          this.webrtcService.handleOffer(message.payload)
+          break
+        case "answer":
+          this.webrtcService.handleAnswer(message.payload)
+          break
+        case "ice-candidate":
+          this.webrtcService.handleIceCandidate(message.payload)
+          break
+      }
     }
 
-    if (message.type === "pong") {
-      return
-    }
-
-    switch (message.type) {
-      case "offer":
-        await this.webrtcService.handleOffer(message.payload)
-        break
-      case "answer":
-        await this.webrtcService.handleAnswer(message.payload)
-        break
-      case "ice-candidate":
-        await this.webrtcService.handleIceCandidate(message.payload)
-        break
-      case "speaking-state":
-        this.emit('speaking-state', message.payload)
-        break
-      default:
-        console.warn("Unbekannter Nachrichtentyp:", message.type)
+    // Notify listeners
+    if (this.listeners[message.type]) {
+      this.listeners[message.type].forEach((callback) => callback(message.payload))
     }
   }
 
-  public getUrl(): string {
-    return this.url
+  public on(event: string, callback: (payload: any) => void): void {
+    if (!this.listeners[event]) {
+      this.listeners[event] = []
+    }
+    this.listeners[event].push(callback)
+  }
+
+  public off(event: string, callback: (payload: any) => void): void {
+    if (this.listeners[event]) {
+      this.listeners[event] = this.listeners[event].filter((cb) => cb !== callback)
+    }
   }
 
   public setWebRTCService(webrtcService: WebRTCService) {
@@ -205,7 +171,6 @@ export class WebSocketService extends BrowserEventEmitter {
   }
 
   public disconnect() {
-    this.log("Disconnecting from WebSocket server")
     this.stopHeartbeat()
     if (this.ws) {
       this.ws.close()
@@ -213,15 +178,7 @@ export class WebSocketService extends BrowserEventEmitter {
     }
     this.reconnectAttempts = 0
   }
-
-  private handleReconnect(): void {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++
-      console.log(`Wiederverbindungsversuch ${this.reconnectAttempts}/${this.maxReconnectAttempts}`)
-      setTimeout(() => this.connect(), this.reconnectDelay * this.reconnectAttempts)
-    } else {
-      console.error("Maximale Anzahl von Wiederverbindungsversuchen erreicht")
-    }
-  }
 }
+
+export { WebSocketService }
 
