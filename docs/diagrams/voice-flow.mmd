@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant Client
+    participant VoiceService
+    participant WebSocketService
+    participant WebRTCService
+    participant Backend
+    participant OtherClient
+
+    Client->>VoiceService: initialize()
+    VoiceService->>WebRTCService: initialize()
+    WebRTCService->>Client: Request Media Permissions
+    Client->>WebRTCService: Grant Permissions
+    WebRTCService->>VoiceService: Local Stream Ready
+    
+    Client->>VoiceService: connect(serverId)
+    VoiceService->>WebSocketService: connect(serverId)
+    WebSocketService->>Backend: WebSocket Connection
+    Backend->>WebSocketService: Connection Established
+    
+    Client->>VoiceService: initiateCall(targetUserId)
+    VoiceService->>WebRTCService: createOffer()
+    WebRTCService->>VoiceService: Offer
+    VoiceService->>WebSocketService: send(offer)
+    WebSocketService->>Backend: Forward Offer
+    Backend->>OtherClient: Forward Offer
+    
+    OtherClient->>Backend: send(answer)
+    Backend->>WebSocketService: Forward Answer
+    WebSocketService->>VoiceService: receive(answer)
+    VoiceService->>WebRTCService: handleAnswer(answer)
+    
+    WebRTCService->>WebRTCService: ICE Candidate Exchange
+    WebRTCService->>VoiceService: Connection Established
+    VoiceService->>Client: Call Active 
