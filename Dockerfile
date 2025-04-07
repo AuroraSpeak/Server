@@ -1,46 +1,38 @@
-# Build stage for Frontend
-FROM node:18-alpine AS frontend-builder
-WORKDIR /app/frontend
+# Entwicklungs-Stage
+FROM golang:1.22-alpine
 
-# Installiere pnpm global
-RUN npm install -g pnpm@latest
-
-# Kopiere und installiere Abhängigkeiten
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
-RUN pnpm install --no-frozen-lockfile
-
-# Kopiere den Rest des Frontend-Codes
-COPY frontend/ .
-RUN pnpm run build
-
-# Build stage for Backend
-FROM golang:1.22-alpine AS backend-builder
-WORKDIR /app/backend
-COPY backend/go.mod backend/go.sum ./
-RUN go mod download
-COPY backend/ .
-RUN mkdir -p dist && CGO_ENABLED=0 GOOS=linux go build -o dist/auraspeak ./cmd/server
-
-# Production stage
-FROM alpine:latest
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache ca-certificates tzdata
+# Installiere Build-Abhängigkeiten und Air
+RUN apk add --no-cache gcc musl-dev git && \
+    go install github.com/cosmtrek/air@v1.49.0
 
-# Copy built frontend
-COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+# Optimiere Go für Container
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GO111MODULE=on
+ENV GOFLAGS=-mod=vendor
 
-# Copy built backend
-COPY --from=backend-builder /app/backend/dist/auraspeak ./backend/
+# Kopiere go.mod und go.sum
+COPY go.mod go.sum ./
 
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3000
+# Lade Abhängigkeiten mit Cache-Layer
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download && \
+    go mod verify
 
-# Expose port
-EXPOSE 3000
+# Kopiere den Rest des Codes
+COPY . .
 
-# Start the application
-CMD ["./backend/auraspeak"]
-    
+# Vendor Dependencies
+RUN go mod vendor
+
+# Health Check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Exponiere den Port
+EXPOSE 8080
+
+# Starte die Anwendung mit Air für Hot-Reloading
+CMD ["air", "-c", ".air.toml"] 

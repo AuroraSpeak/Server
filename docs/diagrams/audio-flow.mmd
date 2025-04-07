@@ -1,9 +1,0 @@
-flowchart LR
-    A[Local Stream] -->|getUserMedia| B[Audio Context]
-    B -->|createAnalyser| C[Audio Analysis]
-    C -->|detect| D[Speaking State]
-    D -->|update| E[Active Speakers]
-    
-    F[Remote Stream] -->|ontrack| G[Audio Processing]
-    G -->|addTrack| H[Peer Connection]
-    H -->|stream| I[Remote Audio] 
