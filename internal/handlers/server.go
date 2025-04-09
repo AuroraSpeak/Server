@@ -23,6 +23,8 @@ func NewServerHandler(serverService *services.ServerService) *ServerHandler {
 type CreateServerRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	AvatarURL   string `json:"avatarUrl"`
+	Color       string `json:"color"`
 }
 
 func (h *ServerHandler) CreateServer(c *fiber.Ctx) error {
@@ -45,6 +47,8 @@ func (h *ServerHandler) CreateServer(c *fiber.Ctx) error {
 	server := &models.Server{
 		Name:        req.Name,
 		Description: req.Description,
+		AvatarURL:   req.AvatarURL,
+		Color:       req.Color,
 		OwnerID:     userID,
 	}
 
@@ -299,4 +303,83 @@ func (h *ServerHandler) GetServerStats(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(stats)
+}
+
+func (h *ServerHandler) GetServerMembers(c *fiber.Ctx) error {
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		h.logger.Error("Ungültige Server-ID",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid server ID",
+		})
+	}
+
+	userID := c.Locals("userID").(uint)
+	h.logger.Debug("Server-Mitglieder werden abgerufen",
+		zap.Uint("userID", userID),
+		zap.Int("serverID", id),
+	)
+
+	// Überprüfe, ob der Benutzer Mitglied des Servers ist
+	isMember, err := h.serverService.IsMember(uint(id), userID)
+	if err != nil {
+		h.logger.Error("Fehler beim Überprüfen der Mitgliedschaft",
+			zap.Error(err),
+			zap.Uint("userID", userID),
+			zap.Int("serverID", id),
+		)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to check membership",
+		})
+	}
+
+	if !isMember {
+		h.logger.Warn("Nicht autorisierter Versuch, Mitglieder abzurufen",
+			zap.Uint("userID", userID),
+			zap.Int("serverID", id),
+		)
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Not authorized to view server members",
+		})
+	}
+
+	members, err := h.serverService.GetServerMembers(uint(id))
+	if err != nil {
+		h.logger.Error("Fehler beim Abrufen der Server-Mitglieder",
+			zap.Error(err),
+			zap.Int("serverID", id),
+		)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to get server members",
+		})
+	}
+
+	// Konvertiere die Mitglieder in das erwartete Format
+	serverUsers := make([]fiber.Map, len(members))
+	for i, member := range members {
+		// Hole die Rolle des Mitglieds
+		role, err := h.serverService.GetMemberRole(uint(id), member.ID)
+		if err != nil {
+			h.logger.Error("Fehler beim Abrufen der Mitgliedsrolle",
+				zap.Error(err),
+				zap.Uint("userID", member.ID),
+				zap.Int("serverID", id),
+			)
+			role = "member" // Fallback auf member
+		}
+
+		serverUsers[i] = fiber.Map{
+			"id":        member.ID,
+			"username":  member.Username,
+			"email":     member.Email,
+			"fullName":  member.FullName,
+			"lastLogin": member.LastLogin,
+			"status":    "offline", // Standard-Status
+			"role":      role,
+		}
+	}
+
+	return c.JSON(serverUsers)
 }

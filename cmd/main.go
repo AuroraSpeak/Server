@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/auraspeak/backend/internal/config"
 	"github.com/auraspeak/backend/internal/handlers"
@@ -20,6 +22,12 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Printf("Warning: .env file not found")
 	}
+
+	// Initialize logger
+	if err := logging.Init(os.Getenv("ENV")); err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer logging.Sync()
 
 	// Load configuration
 	cfg, err := config.LoadConfig()
@@ -51,12 +59,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Initialize Redis cache
-	cache, err := services.NewCacheService(
-		cfg.Redis.Addr,
-		cfg.Redis.Password,
-		cfg.Redis.DB,
+	// Initialize Sentry
+	sentryService, err := services.NewSentryService(
+		cfg.Sentry.DSN,
+		cfg.Sentry.Environment,
+		logger,
 	)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize Sentry: %v", err)
+	}
+
+	// Initialize Redis cache
+	cache, err := services.NewCacheService(cfg)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize Redis cache: %v", err)
 		cache = nil // Cache wird deaktiviert
@@ -69,10 +83,17 @@ func main() {
 	messageService := services.NewMessageService(db)
 
 	logger := logging.NewLogger("webrtc")
+
+	// Host-IP aus Umgebungsvariable oder localhost
+	hostIP := os.Getenv("HOST_IP")
+	if hostIP == "" {
+		hostIP = "localhost"
+	}
+
 	webrtcConfig := &webrtc.Configuration{
 		ICEServers: []webrtc.ICEServer{
 			{
-				URLs: []string{"stun:stun.l.google.com:19302"},
+				URLs: []string{fmt.Sprintf("stun:%s:3478", hostIP)},
 			},
 		},
 	}
@@ -125,6 +146,12 @@ func main() {
 
 	// Setup routes
 	routes.SetupRoutes(server.App(), h, wsHub, authService)
+
+	// Initialize Sentry
+	if sentryService != nil {
+		// Füge Sentry Middleware hinzu
+		server.App().Use(sentryService.Middleware())
+	}
 
 	// Start server
 	if err := server.Start(); err != nil {

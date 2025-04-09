@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/auraspeak/backend/internal/logging"
 	"github.com/auraspeak/backend/internal/models"
 	"github.com/auraspeak/backend/internal/services"
@@ -23,7 +25,8 @@ func NewMessageHandler(messageService *services.MessageService, serverService *s
 }
 
 type CreateMessageRequest struct {
-	Content string `json:"content"`
+	Content  string `json:"content"`
+	Mentions []uint `json:"mentions"`
 }
 
 func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
@@ -37,11 +40,36 @@ func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
 		})
 	}
 
+	// Parse multipart form
+	if form, err := c.MultipartForm(); err == nil {
+		// Verarbeite Anhänge
+		files := form.File["attachments"]
+		for _, file := range files {
+			attachment := &models.Attachment{
+				Type: getFileType(file.Filename),
+				Name: file.Filename,
+				Size: file.Size,
+			}
+
+			// Speichere die Datei und setze die URL
+			// TODO: Implementiere Datei-Upload-Logik
+
+			if err := h.messageService.AddAttachment(attachment); err != nil {
+				h.logger.Error("Fehler beim Speichern des Anhangs",
+					zap.Error(err),
+				)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to save attachment",
+				})
+			}
+		}
+	}
+
 	var req CreateMessageRequest
 	if err := c.BodyParser(&req); err != nil {
 		h.logger.Error("Ungültige Nachrichtenanfrage",
 			zap.Error(err),
-			zap.Int("channelID", channelID),
+			zap.Int("channelId", channelID),
 		)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request body",
@@ -102,6 +130,15 @@ func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create message",
 		})
+	}
+
+	// Verarbeite Erwähnungen
+	for _, mentionedUserID := range req.Mentions {
+		if err := h.messageService.AddMention(message.ID, mentionedUserID); err != nil {
+			h.logger.Error("Fehler beim Hinzufügen der Erwähnung",
+				zap.Error(err),
+			)
+		}
 	}
 
 	h.logger.Info("Nachricht erfolgreich erstellt",
@@ -190,7 +227,8 @@ func (h *MessageHandler) GetChannelMessages(c *fiber.Ctx) error {
 }
 
 type UpdateMessageRequest struct {
-	Content string `json:"content"`
+	Content  string `json:"content"`
+	Mentions []uint `json:"mentions"`
 }
 
 func (h *MessageHandler) UpdateMessage(c *fiber.Ctx) error {
@@ -318,4 +356,129 @@ func (h *MessageHandler) DeleteMessage(c *fiber.Ctx) error {
 	)
 
 	return c.SendStatus(fiber.StatusOK)
+}
+
+type ReactionRequest struct {
+	Emoji string `json:"emoji"`
+}
+
+func (h *MessageHandler) AddReaction(c *fiber.Ctx) error {
+	messageID, err := c.ParamsInt("id")
+	if err != nil {
+		h.logger.Error("Ungültige Nachrichten-ID",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid message ID",
+		})
+	}
+
+	var req ReactionRequest
+	if err := c.BodyParser(&req); err != nil {
+		h.logger.Error("Ungültige Reaktionsanfrage",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	userID := c.Locals("userID").(uint)
+	if err := h.messageService.AddReaction(uint(messageID), userID, req.Emoji); err != nil {
+		h.logger.Error("Fehler beim Hinzufügen der Reaktion",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to add reaction",
+		})
+	}
+
+	message, err := h.messageService.GetMessage(uint(messageID))
+	if err != nil {
+		h.logger.Error("Fehler beim Abrufen der aktualisierten Nachricht",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to get updated message",
+		})
+	}
+
+	return c.JSON(message)
+}
+
+func (h *MessageHandler) RemoveReaction(c *fiber.Ctx) error {
+	messageID, err := c.ParamsInt("id")
+	if err != nil {
+		h.logger.Error("Ungültige Nachrichten-ID",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid message ID",
+		})
+	}
+
+	emoji := c.Params("emoji")
+	if emoji == "" {
+		h.logger.Error("Kein Emoji angegeben")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "No emoji specified",
+		})
+	}
+
+	userID := c.Locals("userID").(uint)
+	if err := h.messageService.RemoveReaction(uint(messageID), userID, emoji); err != nil {
+		h.logger.Error("Fehler beim Entfernen der Reaktion",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to remove reaction",
+		})
+	}
+
+	message, err := h.messageService.GetMessage(uint(messageID))
+	if err != nil {
+		h.logger.Error("Fehler beim Abrufen der aktualisierten Nachricht",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to get updated message",
+		})
+	}
+
+	return c.JSON(message)
+}
+
+func getFileType(filename string) string {
+	// Einfache Implementierung - sollte in der Produktion verbessert werden
+	if strings.HasSuffix(strings.ToLower(filename), ".jpg") ||
+		strings.HasSuffix(strings.ToLower(filename), ".jpeg") ||
+		strings.HasSuffix(strings.ToLower(filename), ".png") ||
+		strings.HasSuffix(strings.ToLower(filename), ".gif") {
+		return "image"
+	}
+	return "file"
+}
+
+func (h *MessageHandler) GetMessage(c *fiber.Ctx) error {
+	messageID, err := c.ParamsInt("id")
+	if err != nil {
+		h.logger.Error("Ungültige Nachrichten-ID",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid message ID",
+		})
+	}
+
+	message, err := h.messageService.GetMessage(uint(messageID))
+	if err != nil {
+		h.logger.Error("Nachricht nicht gefunden",
+			zap.Error(err),
+		)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Message not found",
+		})
+	}
+
+	return c.JSON(message)
 }

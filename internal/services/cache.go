@@ -2,10 +2,12 @@ package services
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"time"
 
 	"github.com/auraspeak/backend/internal/monitoring"
+	"github.com/auraspeak/backend/internal/types"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -14,13 +16,51 @@ type CacheService struct {
 	ctx    context.Context
 }
 
-func NewCacheService(addr string, password string, db int) (*CacheService, error) {
-	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       db,
-	})
+func NewCacheService(config *types.Config) (*CacheService, error) {
+	options := &redis.Options{
+		Addr:     config.Redis.Addr,
+		Password: config.Redis.Password,
+		DB:       config.Redis.DB,
+	}
 
+	// Erweiterte Konfiguration für die Produktion
+	if config.Redis.ClusterMode {
+		// Cluster-Modus Konfiguration
+		options.MaxRetries = config.Redis.MaxRetries
+		options.MinRetryBackoff = config.Redis.MinRetryBackoff
+		options.MaxRetryBackoff = config.Redis.MaxRetryBackoff
+	}
+
+	// Timeout-Einstellungen
+	options.DialTimeout = config.Redis.DialTimeout
+	options.ReadTimeout = config.Redis.ReadTimeout
+	options.WriteTimeout = config.Redis.WriteTimeout
+
+	// Connection Pool Einstellungen
+	options.PoolSize = config.Redis.PoolSize
+	options.MinIdleConns = config.Redis.MinIdleConns
+	options.PoolTimeout = config.Redis.PoolTimeout
+
+	// TLS-Konfiguration
+	if config.Redis.TLSEnabled {
+		tlsConfig := &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+		if config.Redis.TLSCertFile != "" && config.Redis.TLSKeyFile != "" {
+			cert, err := tls.LoadX509KeyPair(config.Redis.TLSCertFile, config.Redis.TLSKeyFile)
+			if err != nil {
+				return nil, err
+			}
+			tlsConfig.Certificates = []tls.Certificate{cert}
+		}
+		if config.Redis.TLSCACertFile != "" {
+			// CA-Zertifikat laden und zur Konfiguration hinzufügen
+			// Implementierung hier...
+		}
+		options.TLSConfig = tlsConfig
+	}
+
+	client := redis.NewClient(options)
 	ctx := context.Background()
 
 	// Teste die Verbindung

@@ -1,5 +1,9 @@
 package types
 
+import (
+	"time"
+)
+
 // Config repräsentiert die Anwendungskonfiguration
 type Config struct {
 	Environment    string
@@ -37,5 +41,29 @@ type Config struct {
 		Addr     string
 		Password string
 		DB       int
+		// Neue Produktionseinstellungen
+		ClusterMode     bool
+		MaxRetries      int
+		MinRetryBackoff time.Duration
+		MaxRetryBackoff time.Duration
+		DialTimeout     time.Duration
+		ReadTimeout     time.Duration
+		WriteTimeout    time.Duration
+		PoolSize        int
+		MinIdleConns    int
+		MaxConnAge      time.Duration
+		PoolTimeout     time.Duration
+		IdleTimeout     time.Duration
+		IdleCheckFreq   time.Duration
+		TLSEnabled      bool
+		TLSCertFile     string
+		TLSKeyFile      string
+		TLSCACertFile   string
+	}
+	Sentry struct {
+		DSN         string
+		Environment string
+		Debug       bool
+		SampleRate  float64
 	}
 }

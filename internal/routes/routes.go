@@ -29,6 +29,7 @@ func SetupRoutes(app *fiber.App, handlers *handlers.Handlers, wsHub *websocket.H
 	api.Post("/servers", handlers.Server.CreateServer)
 	api.Get("/servers/:id", handlers.Server.GetServer)
 	api.Get("/servers/:id/stats", handlers.Server.GetServerStats)
+	api.Get("/servers/:id/members", handlers.Server.GetServerMembers)
 	api.Put("/servers/:id", handlers.Server.UpdateServer)
 	api.Delete("/servers/:id", handlers.Server.DeleteServer)
 
@@ -40,10 +41,17 @@ func SetupRoutes(app *fiber.App, handlers *handlers.Handlers, wsHub *websocket.H
 	api.Delete("/channels/:id", handlers.Channel.DeleteChannel)
 
 	// Message routes
-	api.Post("/channels/:channelId/messages", handlers.Message.CreateMessage)
-	api.Get("/channels/:channelId/messages", handlers.Message.GetChannelMessages)
-	api.Put("/messages/:id", handlers.Message.UpdateMessage)
-	api.Delete("/messages/:id", handlers.Message.DeleteMessage)
+	messages := api.Group("/messages")
+	messages.Get("/:id", handlers.Message.GetMessage)
+	messages.Put("/:id", handlers.Message.UpdateMessage)
+	messages.Delete("/:id", handlers.Message.DeleteMessage)
+	messages.Post("/:id/reactions", handlers.Message.AddReaction)
+	messages.Delete("/:id/reactions/:emoji", handlers.Message.RemoveReaction)
+
+	// Channel message routes
+	channels := api.Group("/channels")
+	channels.Get("/:channelId/messages", handlers.Message.GetChannelMessages)
+	channels.Post("/:channelId/messages", handlers.Message.CreateMessage)
 
 	// WebRTC routes
 	api.Post("/webrtc/offer", handlers.WebRTC.CreateOffer)

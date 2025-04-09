@@ -9,6 +9,7 @@ type Server struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	AvatarURL   string    `json:"avatarUrl,omitempty"`
+	Color       string    `json:"color"`
 	OwnerID     uint      `json:"ownerId"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
@@ -28,6 +29,7 @@ type ServerResponse struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
 	AvatarURL   string    `json:"avatarUrl,omitempty"`
+	Color       string    `json:"color"`
 	OwnerID     uint      `json:"ownerId"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
@@ -39,6 +41,7 @@ func (s *Server) ToResponse() *ServerResponse {
 		Name:        s.Name,
 		Description: s.Description,
 		AvatarURL:   s.AvatarURL,
+		Color:       s.Color,
 		OwnerID:     s.OwnerID,
 		CreatedAt:   s.CreatedAt,
 		UpdatedAt:   s.UpdatedAt,

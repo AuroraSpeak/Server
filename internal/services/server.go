@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/auraspeak/backend/internal/models"
+
 	"gorm.io/gorm"
 )
 
@@ -26,6 +27,17 @@ func (s *ServerService) CreateServer(server *models.Server) error {
 		// Cache für Server-Listen invalidieren
 		s.cache.InvalidateByPattern("user_servers:*")
 	}
+
+	// Füge den Ersteller als Mitglied mit der Rolle "owner" hinzu
+	if err == nil {
+		member := &models.Member{
+			UserID:   server.OwnerID,
+			ServerID: server.ID,
+			Role:     models.MemberRoleOwner,
+		}
+		err = s.db.Create(member).Error
+	}
+
 	return err
 }
 
@@ -279,4 +291,14 @@ func (s *ServerService) generateServerStats() (*models.ServerStats, error) {
 		Uptime: 3600,
 	}
 	return &stats, nil
+}
+
+func (s *ServerService) GetMemberRole(serverID uint, userID uint) (string, error) {
+	// Hole die Server-Mitgliedschaft
+	var member models.Member
+	if err := s.db.Where("server_id = ? AND user_id = ?", serverID, userID).First(&member).Error; err != nil {
+		return "", err
+	}
+
+	return string(member.Role), nil
 }

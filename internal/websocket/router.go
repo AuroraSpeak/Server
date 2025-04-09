@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/auraspeak/backend/internal/services"
@@ -103,17 +104,17 @@ func SetupWebSocketRoutes(app *fiber.App, hub *Hub, authService *services.AuthSe
 
 		logger.Info("Neue WebSocket-Verbindung hergestellt: UserID=%d, ServerID=%s", userID, serverID)
 
+		var wg sync.WaitGroup
+		clientDone := make(chan struct{})
+
 		client := &Client{
 			ID:   fmt.Sprintf("%d", userID),
 			Conn: c,
 			Hub:  hub,
 			send: make(chan []byte, 256),
 			log:  NewLogger(fmt.Sprintf("Client-%d", userID)),
+			done: clientDone,
 		}
-
-		// Registriere den Client im Hub
-		hub.register <- client
-		logger.Info("Client im Hub registriert: UserID=%d, ServerID=%s", userID, serverID)
 
 		// Setze Pong-Handler
 		c.SetPongHandler(func(string) error {
@@ -124,96 +125,99 @@ func SetupWebSocketRoutes(app *fiber.App, hub *Hub, authService *services.AuthSe
 		// Setze initiales Read-Deadline
 		c.SetReadDeadline(time.Now().Add(wsPongWait))
 
+		// Registriere den Client im Hub
+		hub.register <- client
+		logger.Info("Client im Hub registriert: UserID=%d, ServerID=%s", userID, serverID)
+
+		wg.Add(2) // Für ReadPump und WritePump
+
+		// Starte eine Goroutine für das Schreiben von Nachrichten
+		go func() {
+			defer wg.Done()
+			client.WritePump()
+		}()
+
 		// Starte eine Goroutine für das Lesen von Nachrichten
 		go func() {
 			defer func() {
+				wg.Done()
 				hub.unregister <- client
+				logger.Info("Client %d: WebSocket-Verbindung wird geschlossen", userID)
 				c.Close()
-				logger.Info("Client %d: WebSocket-Verbindung geschlossen", userID)
-			}()
-
-			for {
-				messageType, message, err := c.ReadMessage()
-				if err != nil {
-					if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-						logger.Error("Unerwarteter WebSocket-Fehler: %v", err)
-					}
-					break
-				}
-
-				// Verarbeite die Nachricht
-				if messageType == websocket.TextMessage {
-					var msg map[string]interface{}
-					if err := json.Unmarshal(message, &msg); err != nil {
-						logger.Error("Fehler beim Parsen der Nachricht: %v", err)
-						continue
-					}
-
-					// Verarbeite Ping-Nachrichten
-					if msgType, ok := msg["type"].(string); ok && msgType == "ping" {
-						response := map[string]string{"type": "pong"}
-						responseBytes, err := json.Marshal(response)
-						if err != nil {
-							logger.Error("Fehler beim Erstellen der Pong-Antwort: %v", err)
-							continue
-						}
-						if err := c.WriteMessage(websocket.TextMessage, responseBytes); err != nil {
-							logger.Error("Fehler beim Senden der Pong-Antwort: %v", err)
-							break
-						}
-						continue
-					}
-
-					// Verarbeite andere Nachrichtentypen
-					hub.broadcast <- message
-				}
-			}
-		}()
-
-		// Starte eine Goroutine für das Senden von Nachrichten
-		go func() {
-			ticker := time.NewTicker(wsPingPeriod)
-			defer func() {
-				ticker.Stop()
-				c.Close()
-				logger.Info("Client %d: Send-Kanal wurde geschlossen", userID)
 			}()
 
 			for {
 				select {
-				case message, ok := <-client.send:
-					c.SetWriteDeadline(time.Now().Add(wsWriteWait))
-					if !ok {
-						c.WriteMessage(websocket.CloseMessage, []byte{})
-						return
-					}
-
-					w, err := c.NextWriter(websocket.TextMessage)
+				case <-clientDone:
+					return
+				default:
+					messageType, message, err := c.ReadMessage()
 					if err != nil {
-						logger.Error("Fehler beim Erstellen des Writers: %v", err)
+						if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+							logger.Error("Unerwarteter WebSocket-Fehler: %v", err)
+						}
 						return
-					}
-					w.Write(message)
-
-					n := len(client.send)
-					for i := 0; i < n; i++ {
-						w.Write([]byte{'\n'})
-						w.Write(<-client.send)
 					}
 
-					if err := w.Close(); err != nil {
-						logger.Error("Fehler beim Schließen des Writers: %v", err)
-						return
-					}
-				case <-ticker.C:
-					c.SetWriteDeadline(time.Now().Add(wsWriteWait))
-					if err := c.WriteMessage(websocket.PingMessage, nil); err != nil {
-						logger.Error("Fehler beim Senden des Pings: %v", err)
-						return
+					// Verarbeite die Nachricht
+					if messageType == websocket.TextMessage {
+						var msg Message
+						if err := json.Unmarshal(message, &msg); err != nil {
+							logger.Error("Fehler beim Parsen der Nachricht: %v", err)
+							continue
+						}
+
+						// Verarbeite Ping-Nachrichten
+						if msg.Type == MessageTypePing {
+							response := Message{
+								Type: MessageTypePong,
+							}
+							responseBytes, err := json.Marshal(response)
+							if err != nil {
+								logger.Error("Fehler beim Erstellen der Pong-Antwort: %v", err)
+								continue
+							}
+							client.send <- responseBytes
+							continue
+						}
+
+						// Validiere die Nachricht
+						switch msg.Type {
+						case MessageTypeCallRequest:
+							if msg.RoomID == "" {
+								logger.Error("Anrufanfrage ohne RoomID")
+								continue
+							}
+						case MessageTypeOffer, MessageTypeAnswer, MessageTypeIceCandidate:
+							if msg.TargetUserID == "" {
+								logger.Error("WebRTC-Nachricht ohne TargetUserID")
+								continue
+							}
+						}
+
+						// Füge die UserID des Absenders zur Nachricht hinzu
+						msg.Data = map[string]interface{}{
+							"fromUserID": userID,
+							"data":       msg.Data,
+						}
+
+						// Serialisiere die aktualisierte Nachricht
+						updatedMessage, err := json.Marshal(msg)
+						if err != nil {
+							logger.Error("Fehler beim Serialisieren der aktualisierten Nachricht: %v", err)
+							continue
+						}
+
+						// Sende die Nachricht an den Hub
+						hub.broadcast <- updatedMessage
 					}
 				}
 			}
 		}()
+
+		// Warte auf Beendigung beider Goroutinen
+		wg.Wait()
+		logger.Info("Client %d: Alle Goroutinen beendet", userID)
 	}))
 
 	logger.Info("WebSocket-Routen erfolgreich eingerichtet")

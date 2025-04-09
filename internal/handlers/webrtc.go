@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
+	"sync"
+	"time"
 
 	"github.com/auraspeak/backend/internal/logging"
 	"github.com/auraspeak/backend/internal/types"
@@ -13,27 +16,39 @@ import (
 type WebRTCHandler struct {
 	webrtcService types.WebRTCService
 	logger        *zap.Logger
+	clients       map[string]*websocket.Conn
+	clientsMutex  sync.RWMutex
+	rooms         map[string]map[string]bool // roomID -> map[clientID]bool
+	roomsMutex    sync.RWMutex
 }
 
 func NewWebRTCHandler(webrtcService types.WebRTCService) *WebRTCHandler {
 	return &WebRTCHandler{
 		webrtcService: webrtcService,
 		logger:        logging.NewLogger("webrtc"),
+		clients:       make(map[string]*websocket.Conn),
+		rooms:         make(map[string]map[string]bool),
 	}
 }
 
 type WebRTCMessage struct {
-	Type    string          `json:"type"`
-	Payload json.RawMessage `json:"payload"`
+	Type   string          `json:"type"`
+	From   string          `json:"from"`
+	To     string          `json:"to,omitempty"`
+	RoomID string          `json:"roomId"`
+	Data   json.RawMessage `json:"data"`
+}
+
+type ICECandidate struct {
+	Candidate     string `json:"candidate"`
+	SDPMLineIndex int    `json:"sdpMLineIndex"`
+	SDPMid        string `json:"sdpMid"`
 }
 
 func (h *WebRTCHandler) HandleWebSocket(c *websocket.Conn) {
-	clientID := c.Query("clientId")
-	if clientID == "" {
-		h.logger.Error("Keine Client-ID angegeben")
-		c.Close()
-		return
-	}
+	clientID := generateClientID()
+	h.registerClient(clientID, c)
+	defer h.unregisterClient(clientID)
 
 	h.handleConnection(c, clientID)
 }
@@ -78,16 +93,12 @@ func (h *WebRTCHandler) handleConnection(c *websocket.Conn, clientID string) {
 				continue
 			}
 
-			h.logger.Debug("WebRTC-Nachricht empfangen",
-				zap.String("clientID", clientID),
-				zap.String("type", msg.Type),
-			)
-
+			msg.From = clientID
 			if err := h.handleMessage(c, clientID, msg); err != nil {
 				h.logger.Error("Fehler beim Verarbeiten der Nachricht",
 					zap.Error(err),
 					zap.String("clientID", clientID),
-					zap.String("type", msg.Type),
+					zap.String("messageType", msg.Type),
 				)
 			}
 		}
@@ -96,28 +107,127 @@ func (h *WebRTCHandler) handleConnection(c *websocket.Conn, clientID string) {
 
 func (h *WebRTCHandler) handleMessage(c *websocket.Conn, clientID string, msg WebRTCMessage) error {
 	switch msg.Type {
+	case "join":
+		return h.handleJoinRoom(clientID, msg.RoomID)
+
+	case "leave":
+		return h.handleLeaveRoom(clientID, msg.RoomID)
+
 	case "offer":
-		h.logger.Info("WebRTC-Angebot empfangen",
-			zap.String("clientID", clientID),
-		)
-		return h.webrtcService.HandleOffer(clientID, msg.Payload)
+		return h.relayMessage(msg)
+
 	case "answer":
-		h.logger.Info("WebRTC-Antwort empfangen",
-			zap.String("clientID", clientID),
-		)
-		return h.webrtcService.HandleAnswer(clientID, msg.Payload)
+		return h.relayMessage(msg)
+
 	case "ice-candidate":
-		h.logger.Debug("ICE-Kandidat empfangen",
-			zap.String("clientID", clientID),
-		)
-		return h.webrtcService.HandleICECandidate(clientID, msg.Payload)
+		return h.relayMessage(msg)
+
 	default:
-		h.logger.Warn("Unbekannter Nachrichtentyp",
-			zap.String("clientID", clientID),
-			zap.String("type", msg.Type),
-		)
-		return nil
+		return fmt.Errorf("unbekannter Nachrichtentyp: %s", msg.Type)
 	}
+}
+
+func (h *WebRTCHandler) handleJoinRoom(clientID, roomID string) error {
+	h.roomsMutex.Lock()
+	defer h.roomsMutex.Unlock()
+
+	if _, exists := h.rooms[roomID]; !exists {
+		h.rooms[roomID] = make(map[string]bool)
+	}
+
+	h.rooms[roomID][clientID] = true
+
+	// Benachrichtige andere Clients im Raum
+	for otherClientID := range h.rooms[roomID] {
+		if otherClientID != clientID {
+			msg := WebRTCMessage{
+				Type:   "user-joined",
+				From:   clientID,
+				RoomID: roomID,
+			}
+			h.sendToClient(otherClientID, msg)
+		}
+	}
+
+	return nil
+}
+
+func (h *WebRTCHandler) handleLeaveRoom(clientID, roomID string) error {
+	h.roomsMutex.Lock()
+	defer h.roomsMutex.Unlock()
+
+	if room, exists := h.rooms[roomID]; exists {
+		delete(room, clientID)
+		if len(room) == 0 {
+			delete(h.rooms, roomID)
+		}
+
+		// Benachrichtige andere Clients im Raum
+		for otherClientID := range room {
+			msg := WebRTCMessage{
+				Type:   "user-left",
+				From:   clientID,
+				RoomID: roomID,
+			}
+			h.sendToClient(otherClientID, msg)
+		}
+	}
+
+	return nil
+}
+
+func (h *WebRTCHandler) relayMessage(msg WebRTCMessage) error {
+	if msg.To == "" {
+		return fmt.Errorf("Ziel-Client nicht angegeben")
+	}
+
+	return h.sendToClient(msg.To, msg)
+}
+
+func (h *WebRTCHandler) sendToClient(clientID string, msg WebRTCMessage) error {
+	h.clientsMutex.RLock()
+	conn, exists := h.clients[clientID]
+	h.clientsMutex.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("Client %s nicht gefunden", clientID)
+	}
+
+	messageBytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("Fehler beim Serialisieren der Nachricht: %v", err)
+	}
+
+	return conn.WriteMessage(websocket.TextMessage, messageBytes)
+}
+
+func (h *WebRTCHandler) registerClient(clientID string, conn *websocket.Conn) {
+	h.clientsMutex.Lock()
+	defer h.clientsMutex.Unlock()
+	h.clients[clientID] = conn
+}
+
+func (h *WebRTCHandler) unregisterClient(clientID string) {
+	h.clientsMutex.Lock()
+	defer h.clientsMutex.Unlock()
+
+	// Entferne Client aus allen Räumen
+	h.roomsMutex.Lock()
+	for roomID, room := range h.rooms {
+		if room[clientID] {
+			delete(room, clientID)
+			if len(room) == 0 {
+				delete(h.rooms, roomID)
+			}
+		}
+	}
+	h.roomsMutex.Unlock()
+
+	delete(h.clients, clientID)
+}
+
+func generateClientID() string {
+	return fmt.Sprintf("client-%d", time.Now().UnixNano())
 }
 
 func (h *WebRTCHandler) CreateOffer(c *fiber.Ctx) error {

@@ -31,8 +31,8 @@ RUN go mod vendor
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Exponiere den Port
-EXPOSE 8080
+# Exponiere die Ports
+EXPOSE 8080 3478
 
 # Starte die Anwendung mit Air für Hot-Reloading
 CMD ["air", "-c", ".air.toml"] 

@@ -10,6 +10,7 @@ import (
 	"github.com/auraspeak/backend/internal/models"
 	"github.com/auraspeak/backend/internal/types"
 	"github.com/gofiber/websocket/v2"
+	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -224,92 +225,195 @@ func (s *WebRTCService) AddICECandidate(req types.ICECandidateRequest) error {
 }
 
 func (s *WebRTCService) CreatePeerConnection(clientID string) (*webrtc.PeerConnection, error) {
-	s.clientsMux.Lock()
-	defer s.clientsMux.Unlock()
-
-	s.logger.Info("Neue PeerConnection wird erstellt",
+	s.logger.Debug("Erstelle neue PeerConnection",
 		zap.String("clientID", clientID),
 	)
 
-	if _, exists := s.peerConnections[clientID]; exists {
-		s.logger.Error("PeerConnection existiert bereits",
-			zap.String("clientID", clientID),
-		)
-		return nil, fmt.Errorf("PeerConnection für Client %s existiert bereits", clientID)
+	// Erstelle MediaEngine
+	mediaEngine := webrtc.MediaEngine{}
+	if err := mediaEngine.RegisterDefaultCodecs(); err != nil {
+		return nil, fmt.Errorf("Fehler beim Registrieren der Codecs: %v", err)
 	}
 
-	pc, err := s.api.NewPeerConnection(*s.config)
+	// Erstelle API mit MediaEngine
+	api := webrtc.NewAPI(webrtc.WithMediaEngine(&mediaEngine))
+
+	// Erstelle PeerConnection
+	peerConnection, err := api.NewPeerConnection(*s.config)
 	if err != nil {
-		s.logger.Error("Fehler beim Erstellen der PeerConnection",
-			zap.Error(err),
-			zap.String("clientID", clientID),
-		)
 		return nil, fmt.Errorf("Fehler beim Erstellen der PeerConnection: %v", err)
 	}
 
-	s.peerConnections[clientID] = pc
-	s.connections[clientID] = time.Now()
+	// Audio-Track erstellen
+	audioTrack, err := webrtc.NewTrackLocalStaticSample(
+		webrtc.RTPCodecCapability{MimeType: "audio/opus"},
+		fmt.Sprintf("audio-%s", clientID),
+		fmt.Sprintf("stream-%s", clientID),
+	)
+	if err != nil {
+		peerConnection.Close()
+		return nil, fmt.Errorf("Fehler beim Erstellen des Audio-Tracks: %v", err)
+	}
 
-	pc.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		s.logger.Info("ICE Verbindungsstatus geändert",
-			zap.String("clientID", clientID),
-			zap.String("state", state.String()),
-		)
-		if state == webrtc.ICEConnectionStateFailed || state == webrtc.ICEConnectionStateDisconnected {
-			s.logger.Warn("ICE-Verbindung fehlgeschlagen",
-				zap.String("clientID", clientID),
-				zap.String("state", state.String()),
-			)
-			s.ClosePeerConnection(clientID)
-		}
-	})
+	// Track zur PeerConnection hinzufügen
+	if _, err = peerConnection.AddTrack(audioTrack); err != nil {
+		peerConnection.Close()
+		return nil, fmt.Errorf("Fehler beim Hinzufügen des Audio-Tracks: %v", err)
+	}
 
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		s.logger.Info("Verbindungsstatus geändert",
-			zap.String("clientID", clientID),
-			zap.String("state", state.String()),
-		)
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
-			s.logger.Error("Verbindung fehlgeschlagen",
-				zap.String("clientID", clientID),
-			)
-			s.ClosePeerConnection(clientID)
-		}
-	})
-
-	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+	// ICE Candidate Handler
+	peerConnection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate == nil {
 			return
 		}
 
-		candidateJSON, err := json.Marshal(candidate)
+		s.logger.Debug("Neuer ICE Kandidat",
+			zap.String("clientID", clientID),
+			zap.String("candidate", candidate.String()),
+		)
+
+		// Sende Kandidat an Client
+		candidateJSON := candidate.ToJSON()
+		msg := WebRTCMessage{
+			Type:      "ice-candidate",
+			From:      "server",
+			To:        clientID,
+			Candidate: &candidateJSON,
+		}
+
+		if client, ok := s.clients[clientID]; ok {
+			if err := client.Conn.WriteJSON(msg); err != nil {
+				s.logger.Error("Fehler beim Senden des ICE-Kandidaten",
+					zap.String("clientID", clientID),
+					zap.Error(err),
+				)
+			}
+		}
+	})
+
+	// Verbindungsstatus-Handler
+	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		s.logger.Info("PeerConnection Status geändert",
+			zap.String("clientID", clientID),
+			zap.String("state", state.String()),
+		)
+
+		switch state {
+		case webrtc.PeerConnectionStateFailed:
+			if err := peerConnection.Close(); err != nil {
+				s.logger.Error("Fehler beim Schließen der fehlgeschlagenen PeerConnection",
+					zap.String("clientID", clientID),
+					zap.Error(err),
+				)
+			}
+			s.clientsMux.Lock()
+			delete(s.peerConnections, clientID)
+			s.clientsMux.Unlock()
+		case webrtc.PeerConnectionStateConnected:
+			s.clientsMux.Lock()
+			s.connections[clientID] = time.Now()
+			s.clientsMux.Unlock()
+		}
+	})
+
+	// Track-Handler
+	peerConnection.OnTrack(func(remoteTrack *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+		s.logger.Info("Neuer Remote-Track empfangen",
+			zap.String("clientID", clientID),
+			zap.String("trackID", remoteTrack.ID()),
+			zap.String("kind", remoteTrack.Kind().String()),
+		)
+
+		// Starte Audio-Handling in einer Goroutine
+		go s.handleAudioTrack(clientID, remoteTrack, receiver)
+	})
+
+	s.peerConnections[clientID] = peerConnection
+	s.connections[clientID] = time.Now()
+
+	return peerConnection, nil
+}
+
+func (s *WebRTCService) handleAudioTrack(clientID string, track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
+	s.logger.Info("Starte Audio-Track-Handling",
+		zap.String("clientID", clientID),
+		zap.String("trackID", track.ID()),
+	)
+
+	// Buffer für RTP-Pakete
+	buffer := make([]byte, 1500)
+	for {
+		n, _, err := track.Read(buffer)
 		if err != nil {
-			s.logger.Error("Fehler beim Marshalling des ICE-Kandidaten",
+			s.logger.Error("Fehler beim Lesen des Audio-Tracks",
+				zap.String("clientID", clientID),
 				zap.Error(err),
+			)
+			return
+		}
+
+		// Parse RTP-Paket
+		packet := &rtp.Packet{}
+		if err := packet.Unmarshal(buffer[:n]); err != nil {
+			s.logger.Error("Fehler beim Unmarshalling des RTP-Pakets",
+				zap.String("clientID", clientID),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		// Hole Client-Informationen
+		s.clientsMux.RLock()
+		client, exists := s.clients[clientID]
+		s.clientsMux.RUnlock()
+
+		if !exists {
+			s.logger.Error("Client nicht gefunden",
 				zap.String("clientID", clientID),
 			)
 			return
 		}
 
-		s.clientsMux.RLock()
-		if client, exists := s.clients[clientID]; exists {
-			if err := client.Conn.WriteJSON(WebRTCMessage{
-				Type:    "ice-candidate",
-				Payload: json.RawMessage(candidateJSON),
-			}); err != nil {
-				s.logger.Error("Fehler beim Senden des ICE-Kandidaten",
-					zap.Error(err),
-					zap.String("clientID", clientID),
-				)
+		// Leite Audio an alle anderen Clients im gleichen Raum weiter
+		s.forwardAudioToRoom(clientID, packet, client.ServerID)
+	}
+}
+
+func (s *WebRTCService) forwardAudioToRoom(sourceClientID string, packet *rtp.Packet, roomID string) {
+	s.clientsMux.RLock()
+	defer s.clientsMux.RUnlock()
+
+	// Iteriere über alle Peers im Raum
+	for clientID, client := range s.clients {
+		// Überspringe den Sender
+		if clientID == sourceClientID {
+			continue
+		}
+
+		// Überprüfe, ob der Client im gleichen Raum ist
+		if client.ServerID != roomID {
+			continue
+		}
+
+		// Hole die PeerConnection
+		if pc, exists := s.peerConnections[clientID]; exists {
+			if senders := pc.GetSenders(); len(senders) > 0 {
+				for _, sender := range senders {
+					if track := sender.Track(); track != nil {
+						if localTrack, ok := track.(*webrtc.TrackLocalStaticRTP); ok {
+							if err := localTrack.WriteRTP(packet); err != nil {
+								s.logger.Error("Fehler beim Weiterleiten des Audio-Pakets",
+									zap.String("sourceClientID", sourceClientID),
+									zap.String("targetClientID", clientID),
+									zap.Error(err),
+								)
+							}
+						}
+					}
+				}
 			}
 		}
-		s.clientsMux.RUnlock()
-	})
-
-	s.logger.Info("PeerConnection erfolgreich erstellt",
-		zap.String("clientID", clientID),
-	)
-	return pc, nil
+	}
 }
 
 func (s *WebRTCService) HandleOffer(clientID string, payload json.RawMessage) error {

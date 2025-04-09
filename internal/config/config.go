@@ -106,9 +106,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("db.password", "postgres")
 	v.SetDefault("db.name", "auraspeak")
 	v.SetDefault("allowed_origins", "http://localhost:5173")
+
+	// Host-IP aus Umgebungsvariable oder localhost
+	hostIP := os.Getenv("HOST_IP")
+	if hostIP == "" {
+		hostIP = "localhost"
+	}
+
 	v.SetDefault("stun_servers", []string{
-		"stun:stun.l.google.com:19302",
-		"stun:stun1.l.google.com:19302",
+		fmt.Sprintf("stun:%s:3478", hostIP),
 	})
 	v.SetDefault("turn_servers", []map[string]string{
 		{
@@ -137,6 +143,27 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis.addr", "localhost:6379")
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.db", 0)
+
+	// Neue Redis-Produktionseinstellungen
+	v.SetDefault("redis.cluster_mode", false)
+	v.SetDefault("redis.max_retries", 3)
+	v.SetDefault("redis.min_retry_backoff", "8ms")
+	v.SetDefault("redis.max_retry_backoff", "512ms")
+	v.SetDefault("redis.dial_timeout", "5s")
+	v.SetDefault("redis.read_timeout", "3s")
+	v.SetDefault("redis.write_timeout", "3s")
+	v.SetDefault("redis.pool_size", 10)
+	v.SetDefault("redis.min_idle_conns", 5)
+	v.SetDefault("redis.pool_timeout", "4s")
+	v.SetDefault("redis.tls_enabled", false)
+	v.SetDefault("redis.tls_cert_file", "")
+	v.SetDefault("redis.tls_key_file", "")
+	v.SetDefault("redis.tls_ca_cert_file", "")
+
+	v.SetDefault("sentry.dsn", "")
+	v.SetDefault("sentry.environment", "development")
+	v.SetDefault("sentry.debug", false)
+	v.SetDefault("sentry.sample_rate", 1.0)
 }
 
 func validateConfig(v *viper.Viper) error {

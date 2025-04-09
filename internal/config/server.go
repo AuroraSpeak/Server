@@ -62,7 +62,7 @@ func (s *Server) SetupMiddleware() {
 
 	// CORS-Middleware
 	s.app.Use(cors.New(cors.Config{
-		AllowOrigins:     s.config.AllowedOrigins,
+		AllowOrigins:     "http://localhost:5173", // Feste Origin für die Entwicklung
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, Connection, Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Extensions, X-CSRF-Token",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: true,
