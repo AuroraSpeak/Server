@@ -1,0 +1,16 @@
+[Unit]
+Description=AuraSpeak Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=auraspeak
+Group=auraspeak
+WorkingDirectory=/opt/auraspeak
+EnvironmentFile=/etc/auraspeak/.env
+ExecStart=/usr/local/bin/auraspeak-backend
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 

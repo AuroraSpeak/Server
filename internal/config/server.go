@@ -1,11 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/auraspeak/backend/internal/csrf"
 	"github.com/auraspeak/backend/internal/logging"
 	"github.com/auraspeak/backend/internal/middleware"
+	"github.com/auraspeak/backend/internal/models"
 	"github.com/auraspeak/backend/internal/types"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -25,8 +27,20 @@ type Server struct {
 
 func NewServer(db *gorm.DB, config *types.Config) (*Server, error) {
 	// Initialisiere den Logger
-	if err := logging.Init(config.Environment); err != nil {
+	if err := logging.Init("AuraSpeak", logging.InfoLevel); err != nil {
 		return nil, err
+	}
+
+	// Führe Datenbank-Migrationen aus
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Server{},
+		&models.Channel{},
+		&models.Message{},
+		&models.Attachment{},
+		&models.Reaction{},
+	); err != nil {
+		return nil, fmt.Errorf("Fehler bei der Datenbank-Migration: %v", err)
 	}
 
 	app := fiber.New(fiber.Config{
@@ -62,7 +76,7 @@ func (s *Server) SetupMiddleware() {
 
 	// CORS-Middleware
 	s.app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173", // Feste Origin für die Entwicklung
+		AllowOrigins:     "http://localhost:5173,http://localhost:3000,http://localhost:8080,https://your-production-domain.com",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, Connection, Upgrade, Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Extensions, X-CSRF-Token",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: true,

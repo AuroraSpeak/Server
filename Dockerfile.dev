@@ -13,8 +13,8 @@ WORKDIR /app
 # Copy go mod and sum files
 COPY go.mod go.sum ./
 
-# Download all dependencies
-RUN go mod download
+# Download all dependencies and update vendor
+RUN go mod download && go mod vendor
 
 # Copy the source code
 COPY . .

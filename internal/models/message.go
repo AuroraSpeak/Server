@@ -4,16 +4,6 @@ import (
 	"time"
 )
 
-type Attachment struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	Type      string    `json:"type"`
-	URL       string    `json:"url"`
-	Name      string    `json:"name"`
-	Size      int64     `json:"size"`
-	MessageID uint      `json:"messageId"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
 type Reaction struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
 	Emoji     string    `json:"emoji"`

@@ -1,6 +1,8 @@
 package services
 
 import (
+	"fmt"
+
 	"github.com/auraspeak/backend/internal/models"
 	"gorm.io/gorm"
 )
@@ -32,17 +34,26 @@ func (s *MessageService) GetMessage(id uint) (*models.Message, error) {
 
 func (s *MessageService) GetChannelMessages(channelID uint, limit int) ([]models.Message, error) {
 	var messages []models.Message
-	err := s.db.Where("channel_id = ?", channelID).
-		Preload("User").
-		Preload("Attachments").
-		Preload("Mentions").
-		Preload("Reactions").
+
+	// Prüfe zuerst, ob der Channel existiert
+	var channel models.Channel
+	if err := s.db.First(&channel, channelID).Error; err != nil {
+		return nil, fmt.Errorf("Channel nicht gefunden: %v", err)
+	}
+
+	// Hole die Nachrichten ohne Attachments
+	if err := s.db.Where("channel_id = ?", channelID).
 		Order("created_at DESC").
 		Limit(limit).
-		Find(&messages).Error
-	if err != nil {
-		return nil, err
+		Find(&messages).Error; err != nil {
+		return nil, fmt.Errorf("Fehler beim Abrufen der Nachrichten: %v", err)
 	}
+
+	// Setze leere Attachments für jede Nachricht
+	for i := range messages {
+		messages[i].Attachments = []models.Attachment{}
+	}
+
 	return messages, nil
 }
 

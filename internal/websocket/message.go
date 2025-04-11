@@ -4,20 +4,21 @@ package websocket
 type MessageType string
 
 const (
+	MessageTypePing         MessageType = "ping"
+	MessageTypePong         MessageType = "pong"
 	MessageTypeCallRequest  MessageType = "call-request"
 	MessageTypeOffer        MessageType = "offer"
 	MessageTypeAnswer       MessageType = "answer"
 	MessageTypeIceCandidate MessageType = "ice-candidate"
-	MessageTypePing         MessageType = "ping"
-	MessageTypePong         MessageType = "pong"
 )
 
 // Message repräsentiert eine WebSocket-Nachricht
 type Message struct {
 	Type         MessageType `json:"type"`
+	ChannelID    string      `json:"channelId"`
 	TargetUserID string      `json:"targetUserId,omitempty"`
-	Data         interface{} `json:"data,omitempty"`
 	RoomID       string      `json:"roomId,omitempty"`
+	Data         interface{} `json:"data,omitempty"`
 }
 
 // RTCIceCandidate repräsentiert einen ICE-Kandidaten

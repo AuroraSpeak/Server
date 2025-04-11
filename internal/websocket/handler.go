@@ -24,19 +24,20 @@ const (
 
 // Client repräsentiert einen verbundenen WebSocket-Client
 type Client struct {
-	ID   string
-	Conn *websocket.Conn
-	Hub  *Hub
-	mu   sync.Mutex
-	send chan []byte
-	log  *Logger
-	done chan struct{} // Koordinationskanal für sauberes Beenden
+	ID        string
+	ChannelID string // Channel ID hinzufügen
+	Conn      *websocket.Conn
+	Hub       *Hub
+	mu        sync.Mutex
+	send      chan []byte
+	log       *Logger
+	done      chan struct{}
 }
 
 // Hub verwaltet die aktiven WebSocket-Clients und leitet Nachrichten weiter
 type Hub struct {
-	// Registrierte Clients
-	clients map[*Client]bool
+	// Clients nach Channel gruppiert
+	channels map[string]map[*Client]bool
 
 	// Eingehende Nachrichten
 	broadcast chan []byte
@@ -53,14 +54,14 @@ type Hub struct {
 	log *Logger
 }
 
-// NewHub erstellt einen neuen Hub
-func NewHub() *Hub {
+// NewHub erstellt eine neue Hub-Instanz
+func NewHub(log *Logger) *Hub {
 	return &Hub{
+		channels:   make(map[string]map[*Client]bool),
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		clients:    make(map[*Client]bool),
-		log:        NewLogger("Hub"),
+		log:        log,
 	}
 }
 
@@ -71,33 +72,56 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.register:
 			h.mu.Lock()
-			h.clients[client] = true
+			// Erstelle Channel-Map falls nicht vorhanden
+			if _, ok := h.channels[client.ChannelID]; !ok {
+				h.channels[client.ChannelID] = make(map[*Client]bool)
+			}
+			// Füge Client zum Channel hinzu
+			h.channels[client.ChannelID][client] = true
 			h.mu.Unlock()
-			h.log.Info("Client %s registriert", client.ID)
+			h.log.Info("Client %s registriert in Channel %s", client.ID, client.ChannelID)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				h.log.Info("Deregistriere Client %s", client.ID)
-				delete(h.clients, client)
-				close(client.done) // Zuerst done-Channel schließen
-				close(client.send) // Dann send-Channel schließen
-				h.log.Info("Client %s deregistriert", client.ID)
+			// Entferne Client aus Channel
+			if channel, ok := h.channels[client.ChannelID]; ok {
+				if _, ok := channel[client]; ok {
+					delete(channel, client)
+					close(client.done)
+					close(client.send)
+					h.log.Info("Client %s aus Channel %s entfernt", client.ID, client.ChannelID)
+				}
+				// Lösche Channel wenn leer
+				if len(channel) == 0 {
+					delete(h.channels, client.ChannelID)
+					h.log.Info("Channel %s gelöscht (keine Clients mehr)", client.ChannelID)
+				}
 			}
 			h.mu.Unlock()
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
-			h.log.Debug("Broadcasting Nachricht an %d Clients", len(h.clients))
-			for client := range h.clients {
-				select {
-				case client.send <- message:
-					h.log.Debug("Nachricht an Client %s gesendet", client.ID)
-				default:
-					h.log.Error("Fehler beim Senden an Client %s - Client wird deregistriert", client.ID)
-					go func(c *Client) {
-						h.unregister <- c
-					}(client)
+			// Extrahiere Channel-ID aus der Nachricht
+			var msg Message
+			if err := json.Unmarshal(message, &msg); err != nil {
+				h.log.Error("Fehler beim Parsen der Broadcast-Nachricht: %v", err)
+				h.mu.RUnlock()
+				continue
+			}
+
+			// Sende Nachricht an alle Clients im Channel
+			if channel, ok := h.channels[msg.ChannelID]; ok {
+				h.log.Debug("Broadcasting Nachricht an %d Clients in Channel %s", len(channel), msg.ChannelID)
+				for client := range channel {
+					select {
+					case client.send <- message:
+						h.log.Debug("Nachricht an Client %s in Channel %s gesendet", client.ID, msg.ChannelID)
+					default:
+						h.log.Error("Fehler beim Senden an Client %s - Client wird deregistriert", client.ID)
+						go func(c *Client) {
+							h.unregister <- c
+						}(client)
+					}
 				}
 			}
 			h.mu.RUnlock()
@@ -112,16 +136,12 @@ func (c *Client) ReadPump() {
 		c.Hub.unregister <- c
 	}()
 
-	c.mu.Lock()
 	c.Conn.SetReadLimit(maxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.Conn.SetPongHandler(func(string) error {
-		c.mu.Lock()
-		defer c.mu.Unlock()
 		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 		return nil
 	})
-	c.mu.Unlock()
 
 	for {
 		select {
@@ -129,10 +149,7 @@ func (c *Client) ReadPump() {
 			c.log.Info("Client %s: ReadPump beendet durch done-Signal", c.ID)
 			return
 		default:
-			c.mu.Lock()
 			_, message, err := c.Conn.ReadMessage()
-			c.mu.Unlock()
-
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 					c.log.Error("Client %s: Unerwarteter WebSocket-Fehler: %v", c.ID, err)
@@ -202,82 +219,46 @@ func (c *Client) ReadPump() {
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
-		c.log.Info("Client %s: WritePump wird beendet", c.ID)
 		ticker.Stop()
+		c.log.Info("Client %s: WritePump wird beendet", c.ID)
+		c.Conn.Close()
 	}()
 
 	for {
 		select {
-		case <-c.done:
-			c.log.Info("Client %s: WritePump beendet durch done-Signal", c.ID)
-			return
 		case message, ok := <-c.send:
+			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				c.log.Info("Client %s: Send-Kanal wurde geschlossen", c.ID)
-				c.mu.Lock()
-				err := c.Conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-				c.mu.Unlock()
-				if err != nil {
-					c.log.Error("Client %s: Fehler beim Senden der Close-Nachricht: %v", c.ID, err)
-				}
+				// Der Hub hat den Channel geschlossen
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			c.mu.Lock()
-			c.log.Debug("Client %s: Sende Nachricht", c.ID)
-			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
-				c.mu.Unlock()
-				c.log.Error("Client %s: Fehler beim Erstellen des Writers: %v", c.ID, err)
 				return
 			}
+			w.Write(message)
 
-			if _, err := w.Write(message); err != nil {
-				c.mu.Unlock()
-				c.log.Error("Client %s: Fehler beim Schreiben der Nachricht: %v", c.ID, err)
-				return
-			}
-
-			// Sende alle gepufferten Nachrichten
+			// Füge wartende Nachrichten zur aktuellen WebSocket-Nachricht hinzu
 			n := len(c.send)
 			for i := 0; i < n; i++ {
-				nextMsg, ok := <-c.send
-				if !ok {
-					c.mu.Unlock()
-					return
-				}
-
-				if _, err := w.Write([]byte{'\n'}); err != nil {
-					c.mu.Unlock()
-					c.log.Error("Client %s: Fehler beim Schreiben des Zeilenumbruchs: %v", c.ID, err)
-					return
-				}
-
-				if _, err := w.Write(nextMsg); err != nil {
-					c.mu.Unlock()
-					c.log.Error("Client %s: Fehler beim Schreiben der gepufferten Nachricht: %v", c.ID, err)
-					return
-				}
+				w.Write([]byte{'\n'})
+				w.Write(<-c.send)
 			}
 
 			if err := w.Close(); err != nil {
-				c.mu.Unlock()
-				c.log.Error("Client %s: Fehler beim Schließen des Writers: %v", c.ID, err)
 				return
 			}
-			c.mu.Unlock()
 
 		case <-ticker.C:
-			c.mu.Lock()
-			c.log.Debug("Client %s: Sende Ping", c.ID)
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				c.mu.Unlock()
-				c.log.Error("Client %s: Ping fehlgeschlagen: %v", c.ID, err)
 				return
 			}
-			c.mu.Unlock()
+
+		case <-c.done:
+			return
 		}
 	}
 }

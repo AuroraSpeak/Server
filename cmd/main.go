@@ -15,6 +15,7 @@ import (
 	"github.com/auraspeak/backend/internal/websocket"
 	"github.com/joho/godotenv"
 	"github.com/pion/webrtc/v3"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -23,22 +24,34 @@ func main() {
 		log.Printf("Warning: .env file not found")
 	}
 
-	// Initialize logger
-	if err := logging.Init(os.Getenv("ENV")); err != nil {
-		log.Fatalf("Failed to initialize logger: %v", err)
-	}
-	defer logging.Sync()
+	// Initialize logging
+	logging.Init("AuraSpeak", logging.InfoLevel)
+
+	// Create main logger after initialization
+	mainLogger := logging.NewLogger("main")
 
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		mainLogger.Fatal("Failed to load config", zap.Error(err))
+	}
+
+	// Initialize Sentry
+	var sentryService *services.SentryService
+	var sentryErr error
+	sentryService, sentryErr = services.NewSentryService(
+		cfg.Sentry.DSN,
+		cfg.Sentry.Environment,
+		mainLogger,
+	)
+	if sentryErr != nil {
+		mainLogger.Warn("Failed to initialize Sentry", zap.Error(sentryErr))
 	}
 
 	// Initialize database
 	db, err := services.InitDB()
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		mainLogger.Fatal("Failed to initialize database", zap.Error(err))
 	}
 
 	// Auto migrate models
@@ -56,23 +69,13 @@ func main() {
 		&models.ChannelSettings{},
 	)
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Initialize Sentry
-	sentryService, err := services.NewSentryService(
-		cfg.Sentry.DSN,
-		cfg.Sentry.Environment,
-		logger,
-	)
-	if err != nil {
-		log.Printf("Warning: Failed to initialize Sentry: %v", err)
+		mainLogger.Fatal("Failed to migrate models", zap.Error(err))
 	}
 
 	// Initialize Redis cache
 	cache, err := services.NewCacheService(cfg)
 	if err != nil {
-		log.Printf("Warning: Failed to initialize Redis cache: %v", err)
+		mainLogger.Warn("Failed to initialize Redis cache", zap.Error(err))
 		cache = nil // Cache wird deaktiviert
 	}
 
@@ -82,7 +85,7 @@ func main() {
 	channelService := services.NewChannelService(db)
 	messageService := services.NewMessageService(db)
 
-	logger := logging.NewLogger("webrtc")
+	webrtcLogger := logging.NewLogger("webrtc")
 
 	// Host-IP aus Umgebungsvariable oder localhost
 	hostIP := os.Getenv("HOST_IP")
@@ -97,28 +100,28 @@ func main() {
 			},
 		},
 	}
-	webrtcService := services.NewWebRTCService(webrtcConfig, logger)
+	webrtcService := services.NewWebRTCService(webrtcConfig, webrtcLogger)
 
 	inviteService := services.NewInviteService(db)
 	channelSettingsRepo := repository.NewChannelSettingsRepository(db)
 	channelSettingsService := services.NewChannelSettingsService(channelSettingsRepo)
 
 	// Initialize WebSocket Hub
-	wsHub := websocket.NewHub()
-	go wsHub.Run()
+	hub := websocket.NewHub(websocket.NewLogger("Hub"))
+	go hub.Run()
 
 	// Initialize local TURN server if enabled
 	var turnService *services.TURNService
 	if cfg.LocalTURN.Enabled {
 		turnService, err = services.NewTURNService(cfg)
 		if err != nil {
-			log.Fatalf("Failed to initialize TURN service: %v", err)
+			mainLogger.Fatal("Failed to initialize TURN service", zap.Error(err))
 		}
 
 		// Start TURN server in a goroutine
 		go func() {
 			if err := turnService.Start(); err != nil {
-				log.Printf("Failed to start TURN server: %v", err)
+				mainLogger.Error("Failed to start TURN server", zap.Error(err))
 			}
 		}()
 	}
@@ -138,14 +141,14 @@ func main() {
 	// Initialize server
 	server, err := config.NewServer(db, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize server: %v", err)
+		mainLogger.Fatal("Failed to initialize server", zap.Error(err))
 	}
 
 	// Setup middleware
 	server.SetupMiddleware()
 
 	// Setup routes
-	routes.SetupRoutes(server.App(), h, wsHub, authService)
+	routes.SetupRoutes(server.App(), h, hub, authService)
 
 	// Initialize Sentry
 	if sentryService != nil {
@@ -155,6 +158,6 @@ func main() {
 
 	// Start server
 	if err := server.Start(); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+		mainLogger.Fatal("Failed to start server", zap.Error(err))
 	}
 }

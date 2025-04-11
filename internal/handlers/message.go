@@ -40,28 +40,18 @@ func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
 		})
 	}
 
+	userID := c.Locals("userID").(uint)
+	var attachments []*models.Attachment
+
 	// Parse multipart form
 	if form, err := c.MultipartForm(); err == nil {
-		// Verarbeite Anhänge
 		files := form.File["attachments"]
 		for _, file := range files {
-			attachment := &models.Attachment{
-				Type: getFileType(file.Filename),
-				Name: file.Filename,
-				Size: file.Size,
-			}
-
-			// Speichere die Datei und setze die URL
-			// TODO: Implementiere Datei-Upload-Logik
-
-			if err := h.messageService.AddAttachment(attachment); err != nil {
-				h.logger.Error("Fehler beim Speichern des Anhangs",
-					zap.Error(err),
-				)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": "Failed to save attachment",
-				})
-			}
+			attachments = append(attachments, &models.Attachment{
+				FileType: getFileType(file.Filename),
+				FileName: file.Filename,
+				FileSize: file.Size,
+			})
 		}
 	}
 
@@ -69,14 +59,12 @@ func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		h.logger.Error("Ungültige Nachrichtenanfrage",
 			zap.Error(err),
-			zap.Int("channelId", channelID),
 		)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request body",
 		})
 	}
 
-	userID := c.Locals("userID").(uint)
 	h.logger.Info("Neue Nachricht wird erstellt",
 		zap.Uint("userID", userID),
 		zap.Int("channelID", channelID),
@@ -130,6 +118,19 @@ func (h *MessageHandler) CreateMessage(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create message",
 		})
+	}
+
+	// Attachments nach Nachrichtenerstellung speichern
+	for _, attachment := range attachments {
+		attachment.MessageID = message.ID
+		if err := h.messageService.AddAttachment(attachment); err != nil {
+			h.logger.Error("Fehler beim Speichern des Anhangs",
+				zap.Error(err),
+			)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to save attachment",
+			})
+		}
 	}
 
 	// Verarbeite Erwähnungen

@@ -27,6 +27,12 @@ COPY . .
 # Vendor Dependencies
 RUN go mod vendor
 
+# Erstelle Verzeichnis für .env
+RUN mkdir -p /app/config
+
+# Kopiere .env.example als .env, falls keine .env existiert
+COPY .env.example /app/.env
+
 # Health Check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1

@@ -5,6 +5,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/auraspeak/backend/internal/models"
@@ -38,7 +39,7 @@ func (s *MediaService) UploadFile(channelID, userID uint, file *multipart.FileHe
 	defer src.Close()
 
 	// Erstelle das Verzeichnis, falls es nicht existiert
-	dir := filepath.Join(s.baseDir, "uploads", "channels", string(channelID))
+	dir := filepath.Join(s.baseDir, "uploads", "channels", strconv.FormatUint(uint64(channelID), 10))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func (s *MediaService) UploadFile(channelID, userID uint, file *multipart.FileHe
 		Filename:  file.Filename,
 		FileType:  file.Header.Get("Content-Type"),
 		FileSize:  file.Size,
-		URL:       "/uploads/channels/" + string(channelID) + "/" + file.Filename,
+		URL:       "/uploads/channels/" + strconv.FormatUint(uint64(channelID), 10) + "/" + file.Filename,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
