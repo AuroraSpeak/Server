@@ -33,6 +33,14 @@ func SetupRoutes(app *fiber.App, handlers *handlers.Handlers, wsHub *websocket.H
 	api.Put("/servers/:id", handlers.Server.UpdateServer)
 	api.Delete("/servers/:id", handlers.Server.DeleteServer)
 
+	// Role routes
+	roles := api.Group("/servers/:serverId/roles")
+	roles.Get("/", handlers.Role.GetRoles)
+	roles.Post("/", handlers.Role.CreateRole)
+	roles.Put("/:roleId", handlers.Role.UpdateRole)
+	roles.Delete("/:roleId", handlers.Role.DeleteRole)
+	roles.Put("/:roleId/position", handlers.Role.UpdateRolePosition)
+
 	// Channel routes
 	api.Post("/servers/:serverId/channels", handlers.Channel.CreateChannel)
 	api.Get("/servers/:serverId/channels", handlers.Channel.GetServerChannels)
@@ -50,8 +58,8 @@ func SetupRoutes(app *fiber.App, handlers *handlers.Handlers, wsHub *websocket.H
 
 	// Channel message routes
 	channels := api.Group("/channels")
-	channels.Get("/:channelId/messages", handlers.Message.GetChannelMessages)
-	channels.Post("/:channelId/messages", handlers.Message.CreateMessage)
+	channels.Get("/:id/messages", handlers.Message.GetChannelMessages)
+	channels.Post("/:id/messages", handlers.Message.CreateMessage)
 
 	// WebRTC routes
 	api.Post("/webrtc/offer", handlers.WebRTC.CreateOffer)

@@ -13,6 +13,7 @@ type Attachment struct {
 	FilePath  string         `gorm:"size:255;not null" json:"filePath"`
 	FileType  string         `gorm:"size:50;not null" json:"fileType"`
 	FileSize  int64          `gorm:"not null" json:"fileSize"`
+	FileData  []byte         `gorm:"-" json:"-"` // Temporärer Speicher für die Dateidaten
 	CreatedAt time.Time      `json:"createdAt"`
 	UpdatedAt time.Time      `json:"updatedAt"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

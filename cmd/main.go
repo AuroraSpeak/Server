@@ -84,6 +84,7 @@ func main() {
 	serverService := services.NewServerService(db, cache)
 	channelService := services.NewChannelService(db)
 	messageService := services.NewMessageService(db)
+	roleService := services.NewRoleService(db)
 
 	webrtcLogger := logging.NewLogger("webrtc")
 
@@ -128,14 +129,15 @@ func main() {
 
 	// Initialize handlers
 	h := handlers.NewHandlers(
-		db,
 		authService,
 		serverService,
 		channelService,
 		messageService,
+		roleService,
 		webrtcService,
 		inviteService,
 		channelSettingsService,
+		hub,
 	)
 
 	// Initialize server

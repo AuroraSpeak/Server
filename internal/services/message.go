@@ -2,6 +2,9 @@ package services
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 
 	"github.com/auraspeak/backend/internal/models"
 	"gorm.io/gorm"
@@ -41,17 +44,16 @@ func (s *MessageService) GetChannelMessages(channelID uint, limit int) ([]models
 		return nil, fmt.Errorf("Channel nicht gefunden: %v", err)
 	}
 
-	// Hole die Nachrichten ohne Attachments
+	// Hole die Nachrichten mit allen Beziehungen
 	if err := s.db.Where("channel_id = ?", channelID).
+		Preload("User").
+		Preload("Attachments").
+		Preload("Mentions").
+		Preload("Reactions").
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&messages).Error; err != nil {
 		return nil, fmt.Errorf("Fehler beim Abrufen der Nachrichten: %v", err)
-	}
-
-	// Setze leere Attachments für jede Nachricht
-	for i := range messages {
-		messages[i].Attachments = []models.Attachment{}
 	}
 
 	return messages, nil
@@ -93,6 +95,22 @@ func (s *MessageService) RemoveReaction(messageID uint, userID uint, emoji strin
 }
 
 func (s *MessageService) AddAttachment(attachment *models.Attachment) error {
+	// Erstelle das Verzeichnis für die Anhänge
+	dir := filepath.Join("uploads", "attachments", strconv.FormatUint(uint64(attachment.MessageID), 10))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("Fehler beim Erstellen des Verzeichnisses: %v", err)
+	}
+
+	// Speichere die Datei
+	filePath := filepath.Join(dir, attachment.FileName)
+	if err := os.WriteFile(filePath, attachment.FileData, 0644); err != nil {
+		return fmt.Errorf("Fehler beim Speichern der Datei: %v", err)
+	}
+
+	// Setze den Dateipfad
+	attachment.FilePath = filePath
+
+	// Speichere den Anhang in der Datenbank
 	return s.db.Create(attachment).Error
 }
 
@@ -110,4 +128,13 @@ func (s *MessageService) GetChannel(channelID uint) (*models.Channel, error) {
 		return nil, err
 	}
 	return &channel, nil
+}
+
+func (s *MessageService) GetAttachment(attachmentID uint) (*models.Attachment, error) {
+	var attachment models.Attachment
+	err := s.db.First(&attachment, attachmentID).Error
+	if err != nil {
+		return nil, err
+	}
+	return &attachment, nil
 }

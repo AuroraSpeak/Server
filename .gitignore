@@ -3,6 +3,7 @@ node_modules/
 .pnpm-store/
 vendor/
 go.sum
+uploads/
 
 # Build outputs
 dist/

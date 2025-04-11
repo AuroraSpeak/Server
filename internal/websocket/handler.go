@@ -40,7 +40,7 @@ type Hub struct {
 	channels map[string]map[*Client]bool
 
 	// Eingehende Nachrichten
-	broadcast chan []byte
+	Broadcast chan []byte
 
 	// Client-Registrierung
 	register chan *Client
@@ -58,7 +58,7 @@ type Hub struct {
 func NewHub(log *Logger) *Hub {
 	return &Hub{
 		channels:   make(map[string]map[*Client]bool),
-		broadcast:  make(chan []byte),
+		Broadcast:  make(chan []byte),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		log:        log,
@@ -99,7 +99,7 @@ func (h *Hub) Run() {
 			}
 			h.mu.Unlock()
 
-		case message := <-h.broadcast:
+		case message := <-h.Broadcast:
 			h.mu.RLock()
 			// Extrahiere Channel-ID aus der Nachricht
 			var msg Message
@@ -168,33 +168,25 @@ func (c *Client) ReadPump() {
 			c.log.Debug("Client %s: Nachricht empfangen: %s", c.ID, string(message))
 
 			switch msg.Type {
-			case MessageTypeCallRequest:
-				c.log.Info("Client %s: Anrufanfrage empfangen für Raum %s", c.ID, msg.RoomID)
-				c.Hub.broadcast <- message
+			case MessageTypeText, MessageTypeImage, MessageTypeFile:
+				c.log.Info("Client %s: Neue Nachricht in Channel %s", c.ID, msg.ChannelID)
+				c.Hub.Broadcast <- message
 
-			case MessageTypeOffer:
-				if msg.TargetUserID == "" {
-					c.log.Error("Client %s: Angebot ohne Ziel-UserID", c.ID)
-					continue
-				}
-				c.log.Info("Client %s: Sende Angebot an Client %s", c.ID, msg.TargetUserID)
-				c.Hub.broadcast <- message
+			case MessageTypeReaction:
+				c.log.Info("Client %s: Neue Reaktion in Channel %s", c.ID, msg.ChannelID)
+				c.Hub.Broadcast <- message
 
-			case MessageTypeAnswer:
-				if msg.TargetUserID == "" {
-					c.log.Error("Client %s: Antwort ohne Ziel-UserID", c.ID)
-					continue
-				}
-				c.log.Info("Client %s: Sende Antwort an Client %s", c.ID, msg.TargetUserID)
-				c.Hub.broadcast <- message
+			case MessageTypeDelete:
+				c.log.Info("Client %s: Nachricht gelöscht in Channel %s", c.ID, msg.ChannelID)
+				c.Hub.Broadcast <- message
 
-			case MessageTypeIceCandidate:
-				if msg.TargetUserID == "" {
-					c.log.Error("Client %s: ICE-Kandidat ohne Ziel-UserID", c.ID)
-					continue
-				}
-				c.log.Info("Client %s: Sende ICE-Kandidat an Client %s", c.ID, msg.TargetUserID)
-				c.Hub.broadcast <- message
+			case MessageTypeEdit:
+				c.log.Info("Client %s: Nachricht bearbeitet in Channel %s", c.ID, msg.ChannelID)
+				c.Hub.Broadcast <- message
+
+			case MessageTypeTyping:
+				c.log.Debug("Client %s: Tippt in Channel %s", c.ID, msg.ChannelID)
+				c.Hub.Broadcast <- message
 
 			case MessageTypePing:
 				c.log.Debug("Client %s: Ping empfangen, sende Pong", c.ID)

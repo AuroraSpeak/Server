@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/auraspeak/backend/internal/csrf"
+	"github.com/auraspeak/backend/internal/handlers"
 	"github.com/auraspeak/backend/internal/logging"
 	"github.com/auraspeak/backend/internal/middleware"
 	"github.com/auraspeak/backend/internal/models"
@@ -99,6 +100,19 @@ func (s *Server) SetupMiddleware() {
 
 	// Metrics endpoint
 	s.app.Get("/metrics", monitor.New())
+}
+
+func (s *Server) SetupRoutes(authService types.AuthService, messageHandler *handlers.MessageHandler) {
+	// Message-Routen
+	messageGroup := s.app.Group("/api/messages")
+	messageGroup.Use(middleware.AuthMiddleware(authService))
+	messageGroup.Post("/channel/:channelId", messageHandler.CreateMessage)
+	messageGroup.Get("/channel/:channelId", messageHandler.GetChannelMessages)
+	messageGroup.Put("/:id", messageHandler.UpdateMessage)
+	messageGroup.Delete("/:id", messageHandler.DeleteMessage)
+	messageGroup.Post("/:id/reactions", messageHandler.AddReaction)
+	messageGroup.Delete("/:id/reactions/:emoji", messageHandler.RemoveReaction)
+	messageGroup.Get("/attachments/:attachmentId", messageHandler.DownloadAttachment)
 }
 
 func (s *Server) Start() error {

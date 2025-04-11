@@ -229,7 +229,7 @@ func handleTextMessage(message []byte, client *Client, hub *Hub, logger *Logger)
 	}
 
 	// Nachricht an alle Clients im Channel senden
-	hub.broadcast <- updatedMessage
+	hub.Broadcast <- updatedMessage
 }
 
 func sendPongResponse(client *Client, logger *Logger) {
